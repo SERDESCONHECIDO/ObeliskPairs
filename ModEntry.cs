@@ -88,7 +88,6 @@ namespace ObeliskPairs
         {
             if (!e.Button.IsActionButton() || !Context.IsWorldReady) return;
 
-            // Pega o tile onde o jogador está interagindo
             Vector2 tile = e.Cursor.GrabTile;
             string clickedKey = $"{Game1.currentLocation.NameOrUniqueName}|{tile.X}|{tile.Y}";
 
@@ -101,11 +100,8 @@ namespace ObeliskPairs
                     int x = int.Parse(parts[1]);
                     int y = int.Parse(parts[2]);
 
-                    // ANDROID FIX: Teleporta para a casinha de baixo (y + 1) para não ficar preso no objeto
                     Game1.warpFarmer(locationName, x, y + 1, 2);
                     Game1.showGlobalMessage("Teleportado!");
-                    
-                    // Impede que a interface da máquina abra no celular
                     this.Helper.Input.Suppress(e.Button);
                 }
                 else

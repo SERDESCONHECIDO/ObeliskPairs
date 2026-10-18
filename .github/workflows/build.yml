@@ -1,0 +1,36 @@
+name: Build Mod
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '6.0.x'
+
+    - name: Clonar Assemblies de Referência do Jogo
+      run: |
+        git clone --depth 1 https://github.com/StardewModders/mod-reference-assemblies.git "$HOME/StardewValley"
+
+    - name: Compilar
+      run: dotnet build ObeliskPairs.csproj -c Release
+
+    - name: Empacotar
+      run: |
+        mkdir -p Mod_Pronto
+        cp manifest.json Mod_Pronto/
+        cp content.json Mod_Pronto/
+        cp bin/Release/net6.0/ObeliskPairs.dll Mod_Pronto/
+
+    - name: Salvar Zip
+      uses: actions/upload-artifact@v4
+      with:
+        name: ObeliskPairs-Mod
+        path: Mod_Pronto/

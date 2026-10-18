@@ -17,7 +17,6 @@ namespace ObeliskPairs
 
         public override void Entry(IModHelper helper)
         {
-            // Adiciona o item e a receita via código C#
             helper.Events.Content.AssetRequested += OnAssetRequested;
             
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
@@ -42,8 +41,8 @@ namespace ObeliskPairs
                         SpriteIndex = 238, // Textura do Mini-Obelisco
                         Fragility = 0,
                         CanBePlacedOutdoors = true,
-                        CanBePlacedIndoors = true,
-                        ExcludeFromShippingCollection = true
+                        CanBePlacedIndoors = true
+                        // A linha "ExcludeFromShippingCollection" foi REMOVIDA
                     };
                 });
             }

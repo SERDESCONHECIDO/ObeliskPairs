@@ -26,8 +26,8 @@ jobs:
       run: |
         mkdir -p Mod_Pronto
         cp manifest.json Mod_Pronto/
-        cp content.json Mod_Pronto/
         cp bin/Release/net6.0/ObeliskPairs.dll Mod_Pronto/
+        # A linha do content.json foi removida daqui
 
     - name: Salvar Zip
       uses: actions/upload-artifact@v4

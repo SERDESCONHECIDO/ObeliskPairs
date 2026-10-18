@@ -11,6 +11,7 @@ namespace ObeliskPairs
     {
         private const string ItemId = "(BC)ObeliscoPares_Item";
 
+        // AQUI ESTAVA O ERRO: Faltava o tipo <string>
         private readonly List<string> _unpairedObelisks = new();
         private readonly Dictionary<string, string> _connectedPairs = new();
 
@@ -100,6 +101,7 @@ namespace ObeliskPairs
                     int x = int.Parse(parts[1]);
                     int y = int.Parse(parts[2]);
 
+                    // Teleporta para a casa de baixo para não ficar preso no obelisco
                     Game1.warpFarmer(locationName, x, y + 1, 2);
                     Game1.showGlobalMessage("Teleportado!");
                     this.Helper.Input.Suppress(e.Button);

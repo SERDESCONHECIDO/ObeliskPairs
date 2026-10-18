@@ -83,6 +83,9 @@ namespace ObeliskPairs
 
         private void RegisterNewObelisk(string newKey)
         {
+            // Evita registrar a mesma coisa duas vezes
+            if (_unpairedObelisks.Contains(newKey) || _connectedPairs.ContainsKey(newKey)) return;
+
             if (_unpairedObelisks.Count > 0)
             {
                 string partnerKey = _unpairedObelisks[0];
@@ -119,11 +122,9 @@ namespace ObeliskPairs
 
         private void OnButtonPressed(object sender, ButtonPressedEventArgs e)
         {
-            // Verifica se o botão é de ação ou o clique de toque na tela (Android)
             if (!e.Button.IsActionButton() && e.Button != SButton.MouseLeft) return;
             if (!Context.IsWorldReady) return;
 
-            // Verifica o tile do cursor E o tile da frente do jogador (mais seguro no Android)
             Vector2 cursorTile = e.Cursor.GrabTile;
             Vector2 playerFrontTile = Game1.player.GetGrabTile();
 
@@ -139,6 +140,15 @@ namespace ObeliskPairs
                 Vector2 tile = targetTile.Value;
                 string clickedKey = $"{Game1.currentLocation.NameOrUniqueName}|{(int)tile.X}|{(int)tile.Y}";
 
+                // === PLANO B PARA ANDROID ===
+                // Se o evento ObjectListChanged falhou, o obelisco não está no dicionário.
+                // Nós o registramos na hora do clique para garantir que a conexão aconteça.
+                if (!_connectedPairs.ContainsKey(clickedKey) && !_unpairedObelisks.Contains(clickedKey))
+                {
+                    RegisterNewObelisk(clickedKey);
+                }
+
+                // Verifica se agora ele tem um par
                 if (_connectedPairs.TryGetValue(clickedKey, out var targetKey))
                 {
                     var parts = targetKey.Split('|');
@@ -146,13 +156,25 @@ namespace ObeliskPairs
                     int x = int.Parse(parts[1]);
                     int y = int.Parse(parts[2]);
 
-                    Game1.warpFarmer(locationName, x, y + 1, 2);
-                    Game1.showGlobalMessage("Teleportado!");
+                    // Checagem de segurança: O obelisco de destino ainda existe?
+                    var loc = Game1.getLocationFromName(locationName);
+                    if (loc != null && IsObeliskAt(loc, new Vector2(x, y)))
+                    {
+                        Game1.warpFarmer(locationName, x, y + 1, 2);
+                        Game1.showGlobalMessage("Teleportado!");
+                    }
+                    else
+                    {
+                        // Se o destino foi quebrado sem avisar, desfaz a conexão
+                        UnregisterObelisk(clickedKey);
+                        Game1.showRedMessage("O obelisco de destino não existe mais. Conexão desfeita.");
+                    }
+                    
                     this.Helper.Input.Suppress(e.Button);
                 }
                 else
                 {
-                    Game1.showRedMessage("Este Obelisco ainda não está conectado.");
+                    Game1.showRedMessage("Este Obelisco aguarda um par. Coloque outro em algum lugar.");
                     this.Helper.Input.Suppress(e.Button);
                 }
             }

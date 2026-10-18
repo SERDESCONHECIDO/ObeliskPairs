@@ -26,7 +26,7 @@ jobs:
       run: |
         mkdir -p Mod_Pronto
         cp manifest.json Mod_Pronto/
-        cp Content.json Mod_Pronto/
+        cp content.json Mod_Pronto/
         cp bin/Release/net6.0/ObeliskPairs.dll Mod_Pronto/
 
     - name: Salvar Zip

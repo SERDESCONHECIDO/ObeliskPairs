@@ -11,7 +11,6 @@ namespace ObeliskPairs
     {
         private const string ItemId = "(BC)ObeliscoPares_Item";
 
-        // AQUI ESTAVA O ERRO: Faltava o tipo <string>
         private readonly List<string> _unpairedObelisks = new();
         private readonly Dictionary<string, string> _connectedPairs = new();
 
@@ -28,13 +27,14 @@ namespace ObeliskPairs
             _connectedPairs.Clear();
         }
 
-        private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e)
+        private void OnObjectListChanged(object sender, WorldObjectListChangedEventArgs e)
         {
             foreach (var added in e.Added)
             {
                 if (added.Value.QualifiedItemId == ItemId)
                 {
-                    string key = $"{e.Location.NameOrUniqueName}|{added.Key.X}|{added.Key.Y}";
+                    // Correção: Forçando a conversão para (int) para evitar erro de float
+                    string key = $"{e.Location.NameOrUniqueName}|{(int)added.Key.X}|{(int)added.Key.Y}";
                     RegisterNewObelisk(key);
                 }
             }
@@ -43,7 +43,7 @@ namespace ObeliskPairs
             {
                 if (removed.Value.QualifiedItemId == ItemId)
                 {
-                    string key = $"{e.Location.NameOrUniqueName}|{removed.Key.X}|{removed.Key.Y}";
+                    string key = $"{e.Location.NameOrUniqueName}|{(int)removed.Key.X}|{(int)removed.Key.Y}";
                     UnregisterObelisk(key);
                 }
             }
@@ -90,7 +90,8 @@ namespace ObeliskPairs
             if (!e.Button.IsActionButton() || !Context.IsWorldReady) return;
 
             Vector2 tile = e.Cursor.GrabTile;
-            string clickedKey = $"{Game1.currentLocation.NameOrUniqueName}|{tile.X}|{tile.Y}";
+            // Correção: Forçando a conversão para (int)
+            string clickedKey = $"{Game1.currentLocation.NameOrUniqueName}|{(int)tile.X}|{(int)tile.Y}";
 
             if (Game1.currentLocation.Objects.TryGetValue(tile, out var obj) && obj.QualifiedItemId == ItemId)
             {
@@ -101,7 +102,6 @@ namespace ObeliskPairs
                     int x = int.Parse(parts[1]);
                     int y = int.Parse(parts[2]);
 
-                    // Teleporta para a casa de baixo para não ficar preso no obelisco
                     Game1.warpFarmer(locationName, x, y + 1, 2);
                     Game1.showGlobalMessage("Teleportado!");
                     this.Helper.Input.Suppress(e.Button);

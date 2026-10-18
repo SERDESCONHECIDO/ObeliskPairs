@@ -18,7 +18,6 @@ namespace ObeliskPairs
         public override void Entry(IModHelper helper)
         {
             helper.Events.Content.AssetRequested += OnAssetRequested;
-            
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
             helper.Events.World.ObjectListChanged += OnObjectListChanged;
             helper.Events.Input.ButtonPressed += OnButtonPressed;
@@ -38,11 +37,10 @@ namespace ObeliskPairs
                         Description = "Clique para viajar para o obelisco conectado.",
                         Price = 5000,
                         Texture = "TileSheets/Craftables",
-                        SpriteIndex = 238, // Textura do Mini-Obelisco
+                        SpriteIndex = 238,
                         Fragility = 0,
                         CanBePlacedOutdoors = true,
                         CanBePlacedIndoors = true
-                        // A linha "ExcludeFromShippingCollection" foi REMOVIDA
                     };
                 });
             }
@@ -121,13 +119,26 @@ namespace ObeliskPairs
 
         private void OnButtonPressed(object sender, ButtonPressedEventArgs e)
         {
-            if (!e.Button.IsActionButton() || !Context.IsWorldReady) return;
+            // Verifica se o botão é de ação ou o clique de toque na tela (Android)
+            if (!e.Button.IsActionButton() && e.Button != SButton.MouseLeft) return;
+            if (!Context.IsWorldReady) return;
 
-            Vector2 tile = e.Cursor.GrabTile;
-            string clickedKey = $"{Game1.currentLocation.NameOrUniqueName}|{(int)tile.X}|{(int)tile.Y}";
+            // Verifica o tile do cursor E o tile da frente do jogador (mais seguro no Android)
+            Vector2 cursorTile = e.Cursor.GrabTile;
+            Vector2 playerFrontTile = Game1.player.GetGrabTile();
 
-            if (Game1.currentLocation.Objects.TryGetValue(tile, out var obj) && obj.QualifiedItemId == ItemId)
+            Vector2? targetTile = null;
+
+            if (IsObeliskAt(Game1.currentLocation, cursorTile))
+                targetTile = cursorTile;
+            else if (IsObeliskAt(Game1.currentLocation, playerFrontTile))
+                targetTile = playerFrontTile;
+
+            if (targetTile.HasValue)
             {
+                Vector2 tile = targetTile.Value;
+                string clickedKey = $"{Game1.currentLocation.NameOrUniqueName}|{(int)tile.X}|{(int)tile.Y}";
+
                 if (_connectedPairs.TryGetValue(clickedKey, out var targetKey))
                 {
                     var parts = targetKey.Split('|');
@@ -145,6 +156,11 @@ namespace ObeliskPairs
                     this.Helper.Input.Suppress(e.Button);
                 }
             }
+        }
+
+        private bool IsObeliskAt(GameLocation location, Vector2 tile)
+        {
+            return location.Objects.TryGetValue(tile, out var obj) && obj.QualifiedItemId == ItemId;
         }
     }
 }

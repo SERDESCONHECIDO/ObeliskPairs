@@ -1,0 +1,30 @@
+{
+  "Format": "2.0.0",
+  "Changes": [
+    {
+      "Action": "EditData",
+      "Target": "Data/BigCraftables",
+      "Entries": {
+        "ObeliscoPares_Item": {
+          "Name": "ObeliscoPares_Item",
+          "DisplayName": "Obelisco Conectado",
+          "Description": "Clique para viajar para o obelisco conectado.",
+          "Price": 5000,
+          "Texture": "Maps/springobjects",
+          "SpriteIndex": 110,
+          "Fragility": 0,
+          "CanBePlacedOutdoors": true,
+          "CanBePlacedIndoors": true,
+          "ExcludeFromShippingCollection": true
+        }
+      }
+    },
+    {
+      "Action": "EditData",
+      "Target": "Data/CraftingRecipes",
+      "Entries": {
+        "ObeliscoPares_Receita": "390 100 787 5/Home/ObeliscoPares_Item/true/null/null"
+      }
+    }
+  ]
+}

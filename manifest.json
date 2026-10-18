@@ -1,9 +1,9 @@
 {
   "Name": "Obelisk Pairs",
-  "Author": "SeuNome",
+  "Author": "Rob",
   "Version": "1.0.0",
   "Description": "Adiciona obeliscos que se conectam em pares ilimitados. Clique para viajar.",
-  "UniqueID": "SeuNome.ObeliskPairs",
+  "UniqueID": "Rob.ObeliskPairs",
   "EntryDll": "ObeliskPairs.dll",
   "MinimumApiVersion": "4.0.0"
 }

@@ -27,13 +27,13 @@ namespace ObeliskPairs
             _connectedPairs.Clear();
         }
 
+        // O tipo correto para a versão 1.6 é WorldObjectListChangedEventArgs
         private void OnObjectListChanged(object sender, WorldObjectListChangedEventArgs e)
         {
             foreach (var added in e.Added)
             {
                 if (added.Value.QualifiedItemId == ItemId)
                 {
-                    // Correção: Forçando a conversão para (int) para evitar erro de float
                     string key = $"{e.Location.NameOrUniqueName}|{(int)added.Key.X}|{(int)added.Key.Y}";
                     RegisterNewObelisk(key);
                 }
@@ -90,7 +90,6 @@ namespace ObeliskPairs
             if (!e.Button.IsActionButton() || !Context.IsWorldReady) return;
 
             Vector2 tile = e.Cursor.GrabTile;
-            // Correção: Forçando a conversão para (int)
             string clickedKey = $"{Game1.currentLocation.NameOrUniqueName}|{(int)tile.X}|{(int)tile.Y}";
 
             if (Game1.currentLocation.Objects.TryGetValue(tile, out var obj) && obj.QualifiedItemId == ItemId)

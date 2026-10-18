@@ -27,7 +27,8 @@ namespace ObeliskPairs
             _connectedPairs.Clear();
         }
 
-        private void OnObjectListChanged(object sender, WorldObjectListChangedEventArgs e)
+        // O tipo correto é ObjectListChangedEventArgs, não WorldObjectListChangedEventArgs
+        private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e)
         {
             foreach (var added in e.Added)
             {

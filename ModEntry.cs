@@ -11,10 +11,7 @@ namespace ObeliskPairs
     {
         private const string ItemId = "(BC)ObeliscoPares_Item";
 
-        // Fila de obeliscos esperando par
         private readonly List<string> _unpairedObelisks = new();
-        
-        // Dicionário de pares conectados
         private readonly Dictionary<string, string> _connectedPairs = new();
 
         public override void Entry(IModHelper helper)
@@ -32,7 +29,6 @@ namespace ObeliskPairs
 
         private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e)
         {
-            // Obelisco colocado no chão
             foreach (var added in e.Added)
             {
                 if (added.Value.QualifiedItemId == ItemId)
@@ -42,7 +38,6 @@ namespace ObeliskPairs
                 }
             }
 
-            // Obelisco quebrado
             foreach (var removed in e.Removed)
             {
                 if (removed.Value.QualifiedItemId == ItemId)
@@ -57,7 +52,6 @@ namespace ObeliskPairs
         {
             if (_unpairedObelisks.Count > 0)
             {
-                // Conecta com o primeiro da fila
                 string partnerKey = _unpairedObelisks[0];
                 _unpairedObelisks.RemoveAt(0);
 
@@ -67,7 +61,6 @@ namespace ObeliskPairs
             }
             else
             {
-                // Entra na fila de espera
                 _unpairedObelisks.Add(newKey);
                 Game1.showGlobalMessage("Obelisco aguardando conexão...");
             }
@@ -75,20 +68,17 @@ namespace ObeliskPairs
 
         private void UnregisterObelisk(string brokenKey)
         {
-            // Se o quebrado estava sozinho na fila
             if (_unpairedObelisks.Contains(brokenKey))
             {
                 _unpairedObelisks.Remove(brokenKey);
                 return;
             }
 
-            // Se o quebrado tinha um par
             if (_connectedPairs.TryGetValue(brokenKey, out var partnerKey))
             {
                 _connectedPairs.Remove(brokenKey);
                 _connectedPairs.Remove(partnerKey);
 
-                // O parceiro que sobrou volta para a fila de solteiros
                 _unpairedObelisks.Add(partnerKey);
                 Game1.showGlobalMessage("Um Obelisco foi destruído. O par voltou a ficar solteiro.");
             }
@@ -98,6 +88,7 @@ namespace ObeliskPairs
         {
             if (!e.Button.IsActionButton() || !Context.IsWorldReady) return;
 
+            // Pega o tile onde o jogador está interagindo
             Vector2 tile = e.Cursor.GrabTile;
             string clickedKey = $"{Game1.currentLocation.NameOrUniqueName}|{tile.X}|{tile.Y}";
 
@@ -110,9 +101,12 @@ namespace ObeliskPairs
                     int x = int.Parse(parts[1]);
                     int y = int.Parse(parts[2]);
 
-                    Game1.warpFarmer(locationName, x, y, 2);
+                    // ANDROID FIX: Teleporta para a casinha de baixo (y + 1) para não ficar preso no objeto
+                    Game1.warpFarmer(locationName, x, y + 1, 2);
                     Game1.showGlobalMessage("Teleportado!");
-                    this.Helper.Input.Suppress(e.Button); // Impede a abertura da interface
+                    
+                    // Impede que a interface da máquina abra no celular
+                    this.Helper.Input.Suppress(e.Button);
                 }
                 else
                 {

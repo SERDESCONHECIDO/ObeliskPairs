@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
+using StardewValley.GameData.BigCraftables;
 using Microsoft.Xna.Framework;
 
 namespace ObeliskPairs
@@ -16,9 +17,44 @@ namespace ObeliskPairs
 
         public override void Entry(IModHelper helper)
         {
+            // Adiciona o item e a receita via código C#
+            helper.Events.Content.AssetRequested += OnAssetRequested;
+            
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
             helper.Events.World.ObjectListChanged += OnObjectListChanged;
             helper.Events.Input.ButtonPressed += OnButtonPressed;
+        }
+
+        private void OnAssetRequested(object sender, AssetRequestedEventArgs e)
+        {
+            if (e.NameWithoutLocale.IsEquivalentTo("Data/BigCraftables"))
+            {
+                e.Edit(asset =>
+                {
+                    var data = asset.AsDictionary<string, BigCraftableData>().Data;
+                    data["ObeliscoPares_Item"] = new BigCraftableData
+                    {
+                        Name = "ObeliscoPares_Item",
+                        DisplayName = "Obelisco Conectado",
+                        Description = "Clique para viajar para o obelisco conectado.",
+                        Price = 5000,
+                        Texture = "TileSheets/Craftables",
+                        SpriteIndex = 238, // Textura do Mini-Obelisco
+                        Fragility = 0,
+                        CanBePlacedOutdoors = true,
+                        CanBePlacedIndoors = true,
+                        ExcludeFromShippingCollection = true
+                    };
+                });
+            }
+            else if (e.NameWithoutLocale.IsEquivalentTo("Data/CraftingRecipes"))
+            {
+                e.Edit(asset =>
+                {
+                    var data = asset.AsDictionary<string, string>().Data;
+                    data["ObeliscoPares_Receita"] = "390 100 787 5/Home/ObeliscoPares_Item/true/null/null";
+                });
+            }
         }
 
         private void OnSaveLoaded(object sender, SaveLoadedEventArgs e)
@@ -27,7 +63,6 @@ namespace ObeliskPairs
             _connectedPairs.Clear();
         }
 
-        // O tipo correto é ObjectListChangedEventArgs, não WorldObjectListChangedEventArgs
         private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e)
         {
             foreach (var added in e.Added)

@@ -27,7 +27,6 @@ namespace ObeliskPairs
             _connectedPairs.Clear();
         }
 
-        // O tipo correto para a versão 1.6 é WorldObjectListChangedEventArgs
         private void OnObjectListChanged(object sender, WorldObjectListChangedEventArgs e)
         {
             foreach (var added in e.Added)

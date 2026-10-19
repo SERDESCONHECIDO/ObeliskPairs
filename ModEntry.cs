@@ -74,7 +74,6 @@ namespace ObeliskPairs
                 }
             }
             
-            // Limpeza de memória para obeliscos quebrados
             var currentKeys = obelisks.Select(o => $"{loc.NameOrUniqueName}|{(int)o.Key.X}|{(int)o.Key.Y}").ToHashSet();
             var deadKeys = Data.Unpaired.Where(k => k.StartsWith(loc.NameOrUniqueName + "|") && !currentKeys.Contains(k)).ToList();
             foreach (var k in deadKeys) { Data.Unpaired.Remove(k); changed = true; }
@@ -156,7 +155,6 @@ namespace ObeliskPairs
         }
     }
 
-    // --- PATCH 1: Permite colocar fora da fazenda ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {
@@ -165,7 +163,6 @@ namespace ObeliskPairs
             if (!__result && item?.QualifiedItemId == "(BC)238")
             {
                 Vector2 tile = new Vector2(x / 64, y / 64);
-                // CORREÇÃO: location.Objects (com O maiúsculo)
                 if (!location.Objects.ContainsKey(tile) && !location.isWaterTile((int)tile.X, (int)tile.Y))
                 {
                     __result = true;
@@ -183,7 +180,6 @@ namespace ObeliskPairs
             if (__instance.QualifiedItemId == "(BC)238")
             {
                 Vector2 tile = new Vector2(x / 64, y / 64);
-                // CORREÇÃO: location.Objects (com O maiúsculo)
                 if (location.Objects.ContainsKey(tile))
                 {
                     __result = false;
@@ -202,15 +198,13 @@ namespace ObeliskPairs
                     location.playSound("axe");
                     location.playSound("stoneStep");
 
-                    // CORREÇÃO CRÍTICA: Configura a posição e a caixa de colisão manualmente
-                    __instance.Location = location;
+                    // CORREÇÃO: Usa o método nativo para colocar o objeto e força a colisão
                     __instance.TileLocation = tile;
-                    __instance.boundingBox.Value = new Rectangle((int)tile.X * 64, (int)tile.Y * 64, 64, 64);
+                    __instance.Location = location;
+                    __instance.boundingBox.Value = new Microsoft.Xna.Framework.Rectangle((int)tile.X * 64, (int)tile.Y * 64, 64, 64);
                     
-                    // Adiciona à lista de objetos do mapa
-                    location.Objects.Add(tile, __instance);
+                    location.setObject(tile, __instance);
                     
-                    // Registra a conexão na hora
                     string key = $"{location.NameOrUniqueName}|{(int)tile.X}|{(int)tile.Y}";
                     ModEntry.Instance.RegisterNew(key);
 
@@ -218,11 +212,10 @@ namespace ObeliskPairs
                     return false; 
                 }
             }
-            return true; // Os 2 primeiros passam pela lógica original do jogo
+            return true;
         }
     }
 
-    // --- PATCH 3: Interação ---
     [HarmonyPatch]
     public static class CheckActionPatch
     {

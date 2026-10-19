@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using HarmonyLib;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
 using StardewValley.GameData.BigCraftables;
 using Microsoft.Xna.Framework;
+using xTile.Dimensions;
 
 namespace ObeliskPairs
 {
@@ -17,15 +19,23 @@ namespace ObeliskPairs
 
     public class ModEntry : Mod
     {
+        public static ModEntry Instance { get; private set; }
+        public ModData Data { get; private set; }
         private const string ItemId = "(BC)ObeliscoPares_Item";
-        private ModData Data;
 
         public override void Entry(IModHelper helper)
         {
+            Instance = this;
+            Data = new ModData(); // Inicialização segura
+
             helper.Events.Content.AssetRequested += OnAssetRequested;
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
+            helper.Events.Player.Warped += OnWarped;
             helper.Events.World.ObjectListChanged += OnObjectListChanged;
-            helper.Events.Input.ButtonPressed += OnButtonPressed;
+
+            // Aplica o patch no jogo
+            var harmony = new Harmony(this.ModManifest.UniqueID);
+            harmony.PatchAll();
         }
 
         private void OnAssetRequested(object sender, AssetRequestedEventArgs e)
@@ -62,7 +72,37 @@ namespace ObeliskPairs
         private void OnSaveLoaded(object sender, SaveLoadedEventArgs e)
         {
             Data = this.Helper.Data.ReadSaveData<ModData>("obelisk-data") ?? new ModData();
+            // Limpa fantasmas de testes antigos
             Data.Unpaired = Data.Unpaired.Where(k => !Data.Pairs.ContainsKey(k)).Distinct().ToList();
+            ScanLocation(Game1.currentLocation);
+        }
+
+        private void OnWarped(object sender, WarpedEventArgs e)
+        {
+            if (e.IsLocalPlayer) ScanLocation(e.NewLocation);
+        }
+
+        private void ScanLocation(GameLocation loc)
+        {
+            if (loc == null) return;
+            bool changed = false;
+            
+            // Varre o mapa para achar obeliscos que já estavam lá
+            var obelisks = loc.Objects.Pairs
+                .Where(p => IsObelisk(p.Value))
+                .OrderBy(p => p.Key.Y)
+                .ThenBy(p => p.Key.X)
+                .ToList();
+
+            foreach (var obj in obelisks)
+            {
+                string key = $"{loc.NameOrUniqueName}|{(int)obj.Key.X}|{(int)obj.Key.Y}";
+                if (!Data.Pairs.ContainsKey(key) && !Data.Unpaired.Contains(key))
+                {
+                    if (RegisterNew(key)) changed = true;
+                }
+            }
+            if (changed) this.Helper.Data.WriteSaveData("obelisk-data", Data);
         }
 
         private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e)
@@ -87,10 +127,7 @@ namespace ObeliskPairs
                 }
             }
 
-            if (changed)
-            {
-                this.Helper.Data.WriteSaveData("obelisk-data", Data);
-            }
+            if (changed) this.Helper.Data.WriteSaveData("obelisk-data", Data);
         }
 
         private bool RegisterNew(string key)
@@ -131,58 +168,75 @@ namespace ObeliskPairs
             return false;
         }
 
-        private void OnButtonPressed(object sender, ButtonPressedEventArgs e)
+        internal void HandleInteraction(string locationName, Vector2 tile)
         {
-            // CORREÇÃO 1: Apenas o botão de AÇÃO (não intercepta o toque de andar na tela)
-            if (!e.Button.IsActionButton()) return;
-            if (!Context.IsWorldReady) return;
+            string clickedKey = $"{locationName}|{(int)tile.X}|{(int)tile.Y}";
 
-            Vector2? targetTile = FindObeliskTile(Game1.currentLocation, Game1.currentCursorTile) 
-                               ?? FindObeliskTile(Game1.currentLocation, Game1.player.GetGrabTile());
-
-            if (targetTile.HasValue)
+            if (Data.Pairs.TryGetValue(clickedKey, out var targetKey))
             {
-                string clickedKey = $"{Game1.currentLocation.NameOrUniqueName}|{(int)targetTile.Value.X}|{(int)targetTile.Value.Y}";
+                var parts = targetKey.Split('|');
+                string locName = parts[0];
+                int x = int.Parse(parts[1]);
+                int y = int.Parse(parts[2]);
 
-                if (Data.Pairs.TryGetValue(clickedKey, out var targetKey))
+                GameLocation loc = Game1.getLocationFromName(locName);
+                if (loc != null && loc.Objects.TryGetValue(new Vector2(x, y), out var targetObj) && IsObelisk(targetObj))
                 {
-                    var parts = targetKey.Split('|');
-                    string locName = parts[0];
-                    int x = int.Parse(parts[1]);
-                    int y = int.Parse(parts[2]);
-
-                    GameLocation loc = Game1.getLocationFromName(locName);
-                    if (loc != null && loc.Objects.TryGetValue(new Vector2(x, y), out var targetObj) && IsObelisk(targetObj))
-                    {
-                        Game1.warpFarmer(locName, x, y + 1, 2);
-                        Game1.showGlobalMessage("Teleportado!");
-                        this.Helper.Input.Suppress(e.Button);
-                        return;
-                    }
+                    Game1.warpFarmer(locName, x, y + 1, 2);
+                    Game1.showGlobalMessage("Teleportado!");
+                    return;
                 }
-
-                Game1.showRedMessage("Este Obelisco não está conectado.");
-                this.Helper.Input.Suppress(e.Button);
+                else
+                {
+                    Data.Pairs.Remove(clickedKey);
+                    Data.Pairs.Remove(targetKey);
+                    Data.Unpaired.Add(clickedKey);
+                    this.Helper.Data.WriteSaveData("obelisk-data", Data);
+                }
             }
+
+            Game1.showRedMessage("Este Obelisco não está conectado.");
         }
 
-        private bool IsObelisk(StardewValley.Object obj)
+        internal bool IsObelisk(StardewValley.Object obj)
         {
             return obj.QualifiedItemId == ItemId || obj.ItemId == "ObeliscoPares_Item" || obj.Name == "ObeliscoPares_Item";
         }
+    }
 
-        private Vector2? FindObeliskTile(GameLocation location, Vector2 tile)
+    // --- HARMONY PATCH DEFINITIVO ---
+    [HarmonyPatch]
+    public static class CheckActionPatch
+    {
+        static System.Reflection.MethodBase TargetMethod()
         {
-            // CORREÇÃO 2: Retorna a posição BASE do objeto (TileLocation), não o bloco que foi clicado
+            return AccessTools.GetDeclaredMethods(typeof(GameLocation))
+                .FirstOrDefault(m => m.Name == "checkAction" && m.GetParameters().Length >= 2 && m.GetParameters()[0].ParameterType == typeof(Location));
+        }
+
+        static bool Prefix(GameLocation __instance, object[] __args, ref bool __result)
+        {
+            Location tileLocation = null;
+            foreach (var arg in __args)
+            {
+                if (arg is Location loc) { tileLocation = loc; break; }
+            }
+            
+            if (tileLocation == null) return true;
+
+            Vector2 clickedTile = new Vector2(tileLocation.X, tileLocation.Y);
+
             for (int yOffset = -1; yOffset <= 1; yOffset++)
             {
-                Vector2 checkTile = new Vector2(tile.X, tile.Y + yOffset);
-                if (location.Objects.TryGetValue(checkTile, out var obj) && IsObelisk(obj))
+                Vector2 checkTile = new Vector2(clickedTile.X, clickedTile.Y + yOffset);
+                if (__instance.Objects.TryGetValue(checkTile, out var obj) && ModEntry.Instance.IsObelisk(obj))
                 {
-                    return obj.TileLocation; 
+                    ModEntry.Instance.HandleInteraction(__instance.NameOrUniqueName, obj.TileLocation);
+                    __result = true;
+                    return false; 
                 }
             }
-            return null;
+            return true;
         }
     }
 }

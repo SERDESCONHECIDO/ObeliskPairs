@@ -21,7 +21,6 @@ namespace ObeliskPairs
         public static ModEntry Instance { get; private set; }
         public ModData Data { get; private set; }
         
-        // ID do Mini-Obelisco original do jogo
         private const string MiniObeliskId = "(BC)238";
 
         public override void Entry(IModHelper helper)
@@ -173,7 +172,6 @@ namespace ObeliskPairs
         }
     }
 
-    // --- PATCH 1: Permite colocar o Mini-Obelisco em qualquer lugar ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {
@@ -190,7 +188,6 @@ namespace ObeliskPairs
         }
     }
 
-    // --- PATCH 2: Remove o limite de 2 Mini-Obeliscos (intercepta a colocação) ---
     [HarmonyPatch(typeof(StardewValley.Object), nameof(StardewValley.Object.placementAction))]
     public static class MiniObeliskLimitPatch
     {
@@ -205,8 +202,9 @@ namespace ObeliskPairs
                     return false;
                 }
 
-                // Coloca o item diretamente, ignorando a verificação de limite do jogo
-                location.objects.Add(tile, new StardewValley.Object("238", 1));
+                // CORREÇÃO: Coloca o item ORIGINAL, mantendo a textura correta do Mini-Obelisco
+                __instance.TileLocation = tile;
+                location.objects.Add(tile, __instance);
                 __result = true;
                 return false;
             }
@@ -214,7 +212,6 @@ namespace ObeliskPairs
         }
     }
 
-    // --- PATCH 3: Interação personalizada (Teleporte por pares) ---
     [HarmonyPatch]
     public static class CheckActionPatch
     {

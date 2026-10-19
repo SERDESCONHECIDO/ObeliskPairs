@@ -45,13 +45,11 @@ namespace ObeliskPairs
             if (e.IsLocalPlayer) ScanLocation(e.NewLocation);
         }
 
-        // Função de segurança que varre o mapa e organiza os obeliscos na memória
         public void ScanLocation(GameLocation loc)
         {
             if (loc == null) return;
             bool changed = false;
             
-            // Pega todos os obeliscos e ordena pela posição (Y depois X)
             var obelisks = loc.Objects.Pairs
                 .Where(p => IsMiniObelisk(p.Value))
                 .OrderBy(p => p.Key.Y)
@@ -66,8 +64,6 @@ namespace ObeliskPairs
                     if (RegisterNew(key, false)) changed = true;
                 }
             }
-            // Limpa pares onde um dos obeliscos foi quebrado
-            var brokenKeys = Data.Pairs.Keys.Where(k => !loc.NameOrUniqueName.StartsWith(k.Split('|')[0]) && !Game1.getLocationFromName(k.Split('|')[0]).Objects.ContainsKey(new Vector2(int.Parse(k.Split('|')[1]), int.Parse(k.Split('|')[2])))).ToList();
             
             if (changed) this.Helper.Data.WriteSaveData("obelisk-data", Data);
         }
@@ -150,7 +146,6 @@ namespace ObeliskPairs
         }
     }
 
-    // --- PATCH 1: Permite colocar fora da fazenda ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {
@@ -167,7 +162,6 @@ namespace ObeliskPairs
         }
     }
 
-    // --- PATCH 2: Remove o limite e força a colisão correta ---
     [HarmonyPatch(typeof(StardewValley.Object), nameof(StardewValley.Object.placementAction))]
     public static class MiniObeliskLimitPatch
     {
@@ -182,16 +176,16 @@ namespace ObeliskPairs
                     return false;
                 }
 
-                // CONFIGURAÇÃO DE COLISÃO E POSIÇÃO
                 __instance.TileLocation = tile;
-                __instance.Location = location; // <- Isso faz o jogo saber onde o objeto está
-                __instance.boundingBox.Value = new Rectangle((int)tile.X * 64, (int)tile.Y * 64, 64, 64); // <- Cria a caixa invisível de colisão
-                __instance.is_temporarilyInInventory = false;
+                __instance.Location = location;
+                
+                // CORREÇÃO 1: Especifica que o Rectangle é o do XNA (Microsoft.Xna.Framework)
+                __instance.boundingBox.Value = new Microsoft.Xna.Framework.Rectangle((int)tile.X * 64, (int)tile.Y * 64, 64, 64);
+                
+                // CORREÇÃO 2: A linha 'is_temporarilyInInventory' foi removida
 
-                // Adiciona ao mapa
                 location.objects.Add(tile, __instance);
                 
-                // Registra a conexão na mesma hora (evita o bug do Android)
                 string key = $"{location.NameOrUniqueName}|{(int)tile.X}|{(int)tile.Y}";
                 ModEntry.Instance.RegisterNew(key);
 
@@ -202,7 +196,6 @@ namespace ObeliskPairs
         }
     }
 
-    // --- PATCH 3: Interação (Teleporte) ---
     [HarmonyPatch]
     public static class CheckActionPatch
     {
@@ -222,7 +215,6 @@ namespace ObeliskPairs
             
             if (tileLocation == null) return true;
 
-            // Verifica a área antes de processar o clique
             ModEntry.Instance.ScanLocation(__instance);
 
             Vector2 clickedTile = new Vector2(tileLocation.Value.X, tileLocation.Value.Y);

@@ -48,14 +48,12 @@ namespace ObeliskPairs
 
         private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e)
         {
-            // Se um obelisco for quebrado, atualiza a memória e libera o par
             if (e.Removed.Any(r => IsMiniObelisk(r.Value)))
             {
                 ScanLocation(e.Location);
             }
         }
 
-        // A varredura lê a posição DIRETO do mapa, eliminando qualquer erro de coordenada
         public void ScanLocation(GameLocation loc)
         {
             if (loc == null) return;
@@ -76,7 +74,6 @@ namespace ObeliskPairs
                 }
             }
             
-            // Limpeza de segurança: remove da memória obeliscos que não existem mais
             var currentKeys = obelisks.Select(o => $"{loc.NameOrUniqueName}|{(int)o.Key.X}|{(int)o.Key.Y}").ToHashSet();
             
             var deadKeys = Data.Unpaired.Where(k => k.StartsWith(loc.NameOrUniqueName + "|") && !currentKeys.Contains(k)).ToList();
@@ -159,7 +156,6 @@ namespace ObeliskPairs
         }
     }
 
-    // --- PATCH 1: Permite colocar fora da fazenda ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {
@@ -176,7 +172,7 @@ namespace ObeliskPairs
         }
     }
 
-    // --- PATCH 2: Remove o limite e configura a colisão e posição corretamente ---
+    // --- PATCH 2: Executa a lógica nativa de colocação para o 3º obelisco em diante ---
     [HarmonyPatch(typeof(StardewValley.Object), nameof(StardewValley.Object.placementAction))]
     public static class MiniObeliskLimitPatch
     {
@@ -191,32 +187,42 @@ namespace ObeliskPairs
                     return false;
                 }
 
+                // Conta os obeliscos existentes
                 int count = 0;
                 foreach (var loc in Game1.locations)
                     count += loc.Objects.Pairs.Count(p => p.Value.QualifiedItemId == "(BC)238");
 
-                // Se já tiver 2 obeliscos no jogo, nós forçamos a colocação
+                // Se o jogador já tiver 2, nós ignoramos o bloqueio de limite
                 if (count >= 2)
                 {
-                    // CORREÇÃO CRÍTICA: Define a posição e o local para criar a caixa de colisão (evita ser intangível)
-                    __instance.TileLocation = tile;
+                    // --- CÓPIA EXATA DO COMPORTAMENTO DO JOGO BASE ---
+                    // 1. Remove o item do inventário
+                    if (who != null) who.reduceActiveItemByOne();
+                    else Game1.player.reduceActiveItemByOne();
+
+                    // 2. Sons de colocação
+                    location.playSound("axe");
+                    location.playSound("stoneStep");
+
+                    // 3. Propriedades do Objeto e Colisão
                     __instance.Location = location;
+                    __instance.TileLocation = tile;
+                    location.setObject(tile, __instance);
+                    __instance.isSpawnedObject = false;
+                    __instance.initializeLightSource(tile);
                     
-                    // Adiciona ao mapa
-                    location.objects.Add(tile, __instance);
-                    
-                    // CORREÇÃO CRÍTICA: Roda a varredura do mapa na hora (evita ter que relogar para conectar)
-                    ModEntry.Instance.ScanLocation(location);
+                    // 4. Salva a conexão na mesma hora
+                    string key = $"{location.NameOrUniqueName}|{(int)tile.X}|{(int)tile.Y}";
+                    ModEntry.Instance.RegisterNew(key);
 
                     __result = true;
-                    return false; 
+                    return false; // Impede o jogo de rodar a verificação de limite dele
                 }
             }
-            return true;
+            return true; // Os 2 primeiros passam pelo jogo normal
         }
     }
 
-    // --- PATCH 3: Interação (Teleporte) ---
     [HarmonyPatch]
     public static class CheckActionPatch
     {

@@ -171,7 +171,7 @@ namespace ObeliskPairs
         }
     }
 
-    // --- PATCH 2: Remove o limite e coloca o objeto tangível ---
+    // --- PATCH 2: Cria um NOVO objeto para garantir colisão perfeita ---
     [HarmonyPatch(typeof(StardewValley.Object), nameof(StardewValley.Object.placementAction))]
     public static class MiniObeliskLimitPatch
     {
@@ -190,21 +190,28 @@ namespace ObeliskPairs
                 foreach (var loc in Game1.locations)
                     count += loc.Objects.Pairs.Count(p => p.Value.QualifiedItemId == "(BC)238");
 
+                // Se o jogador já tiver 2 obeliscos (limite vanilla)
                 if (count >= 2)
                 {
+                    // 1. Remove o item do inventário primeiro
                     if (who != null) who.reduceActiveItemByOne();
                     else Game1.player.reduceActiveItemByOne();
 
+                    // 2. Toca os sons
                     location.playSound("axe");
                     location.playSound("stoneStep");
 
-                    // CORREÇÃO: Usa o método nativo para colocar o objeto e força a colisão
-                    __instance.TileLocation = tile;
-                    __instance.Location = location;
-                    __instance.boundingBox.Value = new Microsoft.Xna.Framework.Rectangle((int)tile.X * 64, (int)tile.Y * 64, 64, 64);
+                    // 3. Cria uma INSTÂNCIA NOVA (evita o bug do clone fantasma)
+                    StardewValley.Object novoObelisco = new StardewValley.Object("238", 1);
                     
-                    location.setObject(tile, __instance);
+                    novoObelisco.TileLocation = tile;
+                    novoObelisco.Location = location;
+                    novoObelisco.boundingBox.Value = new Microsoft.Xna.Framework.Rectangle((int)tile.X * 64, (int)tile.Y * 64, 64, 64);
+
+                    // 4. Adiciona ao mapa
+                    location.setObject(tile, novoObelisco);
                     
+                    // 5. Salva a conexão na mesma hora
                     string key = $"{location.NameOrUniqueName}|{(int)tile.X}|{(int)tile.Y}";
                     ModEntry.Instance.RegisterNew(key);
 

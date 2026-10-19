@@ -80,7 +80,29 @@ namespace ObeliskPairs
             if (e.IsLocalPlayer) ScanLocation(e.NewLocation);
         }
 
-        private void ScanLocation(GameLocation loc)
+        private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e)
+        {
+            bool changed = false;
+
+            // Processa as remoções (picaretada)
+            foreach (var removed in e.Removed)
+            {
+                if (IsObelisk(removed.Value))
+                {
+                    string key = $"{e.Location.NameOrUniqueName}|{(int)removed.Key.X}|{(int)removed.Key.Y}";
+                    if (Unregister(key)) changed = true;
+                }
+            }
+
+            if (changed) this.Helper.Data.WriteSaveData("obelisk-data", Data);
+
+            // FAILSAFE: Em vez de confiar no e.Added (que falha no Android), 
+            // nós simplesmente varremos a área inteira para registrar qualquer obelisco novo.
+            ScanLocation(e.Location);
+        }
+
+        // Varre a área e organiza os obeliscos por ordem de colocação (Y, depois X)
+        internal void ScanLocation(GameLocation loc)
         {
             if (loc == null) return;
             bool changed = false;
@@ -99,31 +121,6 @@ namespace ObeliskPairs
                     if (RegisterNew(key)) changed = true;
                 }
             }
-            if (changed) this.Helper.Data.WriteSaveData("obelisk-data", Data);
-        }
-
-        private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e)
-        {
-            bool changed = false;
-
-            foreach (var added in e.Added)
-            {
-                if (IsObelisk(added.Value))
-                {
-                    string key = $"{e.Location.NameOrUniqueName}|{(int)added.Key.X}|{(int)added.Key.Y}";
-                    if (RegisterNew(key)) changed = true;
-                }
-            }
-
-            foreach (var removed in e.Removed)
-            {
-                if (IsObelisk(removed.Value))
-                {
-                    string key = $"{e.Location.NameOrUniqueName}|{(int)removed.Key.X}|{(int)removed.Key.Y}";
-                    if (Unregister(key)) changed = true;
-                }
-            }
-
             if (changed) this.Helper.Data.WriteSaveData("obelisk-data", Data);
         }
 
@@ -212,7 +209,6 @@ namespace ObeliskPairs
 
         static bool Prefix(GameLocation __instance, object[] __args, ref bool __result)
         {
-            // CORREÇÃO: Usar 'Location?' (nullable) para permitir null
             Location? tileLocation = null;
             foreach (var arg in __args)
             {
@@ -220,6 +216,9 @@ namespace ObeliskPairs
             }
             
             if (tileLocation == null) return true;
+
+            // FAILSAFE FINAL: Varre a área no exato milissegundo do clique
+            ModEntry.Instance.ScanLocation(__instance);
 
             Vector2 clickedTile = new Vector2(tileLocation.Value.X, tileLocation.Value.Y);
 

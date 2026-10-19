@@ -8,29 +8,21 @@ using Microsoft.Xna.Framework;
 
 namespace ObeliskPairs
 {
-    // Classe para guardar a localização exata do obelisco de forma segura
-    public class ObeliskPos
-    {
-        public string Location { get; set; }
-        public Vector2 Tile { get; set; }
-        
-        public override bool Equals(object obj) => obj is ObeliskPos other && Location == other.Location && Tile == other.Tile;
-        public override int GetHashCode() => HashCode.Combine(Location, Tile);
-    }
-
     public class ModEntry : Mod
     {
         private const string ItemId = "(BC)ObeliscoPares_Item";
 
-        // Fila de obeliscos solteiros
-        private readonly List<ObeliskPos> _unpaired = new();
-        // Dicionário que liga A -> B e B -> A
-        private readonly Dictionary<ObeliskPos, ObeliskPos> _pairs = new();
+        // Usamos textos simples e exatos como chave (ex: "Farm|10|15")
+        private readonly List<string> _unpaired = new();
+        private readonly Dictionary<string, string> _pairs = new();
+
+        private string GetKey(string location, Vector2 tile) => $"{location}|{(int)tile.X}|{(int)tile.Y}";
 
         public override void Entry(IModHelper helper)
         {
             helper.Events.Content.AssetRequested += OnAssetRequested;
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
+            helper.Events.Player.Warped += OnWarped;
             helper.Events.World.ObjectListChanged += OnObjectListChanged;
             helper.Events.Input.ButtonPressed += OnButtonPressed;
         }
@@ -73,14 +65,19 @@ namespace ObeliskPairs
             ScanLocation(Game1.currentLocation);
         }
 
+        private void OnWarped(object sender, WarpedEventArgs e)
+        {
+            ScanLocation(e.NewLocation);
+        }
+
         private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e)
         {
             foreach (var added in e.Added)
             {
                 if (added.Value.QualifiedItemId == ItemId)
                 {
-                    var pos = new ObeliskPos { Location = e.Location.NameOrUniqueName, Tile = added.Key };
-                    Register(pos);
+                    string key = GetKey(e.Location.NameOrUniqueName, added.Key);
+                    Register(key);
                 }
             }
 
@@ -88,8 +85,8 @@ namespace ObeliskPairs
             {
                 if (removed.Value.QualifiedItemId == ItemId)
                 {
-                    var pos = new ObeliskPos { Location = e.Location.NameOrUniqueName, Tile = removed.Key };
-                    Unregister(pos);
+                    string key = GetKey(e.Location.NameOrUniqueName, removed.Key);
+                    Unregister(key);
                 }
             }
         }
@@ -101,43 +98,43 @@ namespace ObeliskPairs
             {
                 if (obj.Value.QualifiedItemId == ItemId)
                 {
-                    var pos = new ObeliskPos { Location = loc.NameOrUniqueName, Tile = obj.Key };
-                    if (!_unpaired.Contains(pos) && !_pairs.ContainsKey(pos))
+                    string key = GetKey(loc.NameOrUniqueName, obj.Key);
+                    if (!_unpaired.Contains(key) && !_pairs.ContainsKey(key))
                     {
-                        Register(pos);
+                        Register(key);
                     }
                 }
             }
         }
 
-        private void Register(ObeliskPos pos)
+        private void Register(string key)
         {
             if (_unpaired.Count > 0)
             {
-                var partner = _unpaired[0];
+                string partner = _unpaired[0];
                 _unpaired.RemoveAt(0);
-                _pairs[pos] = partner;
-                _pairs[partner] = pos;
+                _pairs[key] = partner;
+                _pairs[partner] = key;
                 Game1.showGlobalMessage("Dois Obeliscos foram conectados!");
             }
             else
             {
-                _unpaired.Add(pos);
+                _unpaired.Add(key);
                 Game1.showGlobalMessage("Obelisco aguardando conexão...");
             }
         }
 
-        private void Unregister(ObeliskPos pos)
+        private void Unregister(string key)
         {
-            if (_unpaired.Contains(pos))
+            if (_unpaired.Contains(key))
             {
-                _unpaired.Remove(pos);
+                _unpaired.Remove(key);
                 return;
             }
 
-            if (_pairs.TryGetValue(pos, out var partner))
+            if (_pairs.TryGetValue(key, out var partner))
             {
-                _pairs.Remove(pos);
+                _pairs.Remove(key);
                 _pairs.Remove(partner);
                 _unpaired.Add(partner);
                 Game1.showGlobalMessage("Um Obelisco foi destruído. O par voltou a ficar solteiro.");
@@ -149,25 +146,25 @@ namespace ObeliskPairs
             if (!e.Button.IsActionButton() && e.Button != SButton.MouseLeft) return;
             if (!Context.IsWorldReady) return;
 
-            Vector2 cursorTile = Game1.currentCursorTile;
-            Vector2 playerFrontTile = Game1.player.GetGrabTile();
+            // Verifica o bloco exato e o bloco de cima (para o toque no Android)
+            Vector2? targetTile = GetObeliskTile(Game1.currentLocation, Game1.currentCursorTile) 
+                               ?? GetObeliskTile(Game1.currentLocation, Game1.player.GetGrabTile());
 
-            ObeliskPos clickedPos = null;
-
-            if (IsObeliskAt(Game1.currentLocation, cursorTile))
-                clickedPos = new ObeliskPos { Location = Game1.currentLocation.NameOrUniqueName, Tile = cursorTile };
-            else if (IsObeliskAt(Game1.currentLocation, playerFrontTile))
-                clickedPos = new ObeliskPos { Location = Game1.currentLocation.NameOrUniqueName, Tile = playerFrontTile };
-
-            if (clickedPos != null)
+            if (targetTile.HasValue)
             {
-                if (_pairs.TryGetValue(clickedPos, out var targetPos))
+                string clickedKey = GetKey(Game1.currentLocation.NameOrUniqueName, targetTile.Value);
+                
+                if (_pairs.TryGetValue(clickedKey, out var targetKey))
                 {
-                    GameLocation loc = Game1.getLocationFromName(targetPos.Location);
-                    if (loc != null && loc.Objects.TryGetValue(targetPos.Tile, out var targetObj) && targetObj.QualifiedItemId == ItemId)
+                    var parts = targetKey.Split('|');
+                    string locName = parts[0];
+                    int x = int.Parse(parts[1]);
+                    int y = int.Parse(parts[2]);
+
+                    GameLocation loc = Game1.getLocationFromName(locName);
+                    if (loc != null && loc.Objects.TryGetValue(new Vector2(x, y), out var targetObj) && targetObj.QualifiedItemId == ItemId)
                     {
-                        // Teleporta para a casinha de baixo (Y + 1) para não ficar preso dentro do obelisco
-                        Game1.warpFarmer(targetPos.Location, (int)targetPos.Tile.X, (int)targetPos.Tile.Y + 1, 2);
+                        Game1.warpFarmer(locName, x, y + 1, 2);
                         Game1.showGlobalMessage("Teleportado!");
                         this.Helper.Input.Suppress(e.Button);
                         return;
@@ -175,9 +172,9 @@ namespace ObeliskPairs
                     else
                     {
                         Game1.showRedMessage("O obelisco de destino não existe mais. Conexão desfeita.");
-                        _pairs.Remove(clickedPos);
-                        _pairs.Remove(targetPos);
-                        _unpaired.Add(clickedPos);
+                        _pairs.Remove(clickedKey);
+                        _pairs.Remove(targetKey);
+                        _unpaired.Add(clickedKey);
                         this.Helper.Input.Suppress(e.Button);
                         return;
                     }
@@ -188,9 +185,18 @@ namespace ObeliskPairs
             }
         }
 
-        private bool IsObeliskAt(GameLocation location, Vector2 tile)
+        private Vector2? GetObeliskTile(GameLocation location, Vector2 tile)
         {
-            return location.Objects.TryGetValue(tile, out var obj) && obj.QualifiedItemId == ItemId;
+            // Verifica o bloco base
+            if (location.Objects.TryGetValue(tile, out var obj) && obj.QualifiedItemId == ItemId)
+                return tile;
+            
+            // Verifica o bloco de cima (onde fica a parte visual do obelisco)
+            Vector2 above = new Vector2(tile.X, tile.Y - 1);
+            if (location.Objects.TryGetValue(above, out var objAbove) && objAbove.QualifiedItemId == ItemId)
+                return above;
+                
+            return null;
         }
     }
 }

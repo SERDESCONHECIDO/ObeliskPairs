@@ -5,7 +5,6 @@ using HarmonyLib;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
-using StardewValley.GameData.BigCraftables;
 using Microsoft.Xna.Framework;
 using xTile.Dimensions;
 
@@ -33,9 +32,6 @@ namespace ObeliskPairs
         public ModConfig Config { get; private set; }
 
         public const string MiniObeliskId = "(BC)238";
-        public const string CustomObeliskId = "(BC)MeuObeliscoConectado";
-        public const string CustomObeliskName = "MeuObeliscoConectado";
-
         private const string MailFlag = "WizardObeliskLetterSent";
         private bool _isConditionMet = false;
 
@@ -71,32 +67,14 @@ namespace ObeliskPairs
 
         private void OnAssetRequested(object sender, AssetRequestedEventArgs e)
         {
-            if (e.NameWithoutLocale.IsEquivalentTo("Data/BigCraftables"))
-            {
-                e.Edit(asset =>
-                {
-                    var data = asset.AsDictionary<string, BigCraftableData>().Data;
-                    data[CustomObeliskName] = new BigCraftableData
-                    {
-                        Name = CustomObeliskName,
-                        DisplayName = "Obelisco Conectado",
-                        Description = "Conecta-se em pares ilimitados. Clique para viajar.",
-                        Price = 1000,
-                        Texture = "TileSheets/Craftables",
-                        SpriteIndex = 238,
-                        Fragility = 0,
-                        CanBePlacedOutdoors = true,
-                        CanBePlacedIndoors = true
-                    };
-                });
-            }
-            else if (e.NameWithoutLocale.IsEquivalentTo("Data/CraftingRecipes"))
+            // MODIFICA APENAS A RECEITA ORIGINAL DO MINI-OBELISCO
+            if (e.NameWithoutLocale.IsEquivalentTo("Data/CraftingRecipes"))
             {
                 e.Edit(asset =>
                 {
                     var data = asset.AsDictionary<string, string>().Data;
                     
-                    // Hiberna o obelisco original do jogo
+                    // Remove a receita original de todas as formas possíveis
                     data.Remove("Mini-Obelisk");
                     data.Remove("(BC)238");
                     data.Remove("238");
@@ -107,8 +85,9 @@ namespace ObeliskPairs
 
                     if (shouldAdd)
                     {
-                        // CORREÇÃO FINAL: A saída é o CustomObeliskName (sem BC)
-                        data["MeuObeliscoConectado_Receita"] = $"{Config.CraftingIngredients}/Home/{CustomObeliskName}/true/null/null";
+                        // Recria a receita do MESMO item (Mini-Obelisk = 238), com os ingredientes configurados
+                        // A saída é "(BC)238" que é o ID qualificado do Mini-Obelisco original
+                        data["Mini-Obelisk"] = $"{Config.CraftingIngredients}/Home/(BC)238/true/null/null";
                     }
                 });
             }
@@ -239,7 +218,7 @@ namespace ObeliskPairs
             Game1.showRedMessage("Este Mini-Obelisco não está conectado a nenhum outro.");
         }
 
-        internal bool IsMiniObelisk(StardewValley.Object obj) => obj != null && (obj.QualifiedItemId == MiniObeliskId || obj.QualifiedItemId == CustomObeliskId || obj.ItemId == "238" || obj.ItemId == CustomObeliskName);
+        internal bool IsMiniObelisk(StardewValley.Object obj) => obj != null && (obj.QualifiedItemId == MiniObeliskId || obj.ItemId == "238");
     }
 
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
@@ -247,7 +226,7 @@ namespace ObeliskPairs
     {
         static void Postfix(GameLocation location, Item item, int x, int y, Farmer f, ref bool __result)
         {
-            if (!__result && (item?.QualifiedItemId == ModEntry.MiniObeliskId || item?.QualifiedItemId == ModEntry.CustomObeliskId))
+            if (!__result && item?.QualifiedItemId == ModEntry.MiniObeliskId)
             {
                 Vector2 tile = new Vector2(x / 64, y / 64);
                 if (!location.Objects.ContainsKey(tile) && !location.isWaterTile((int)tile.X, (int)tile.Y)) __result = true;
@@ -260,13 +239,13 @@ namespace ObeliskPairs
     {
         static bool Prefix(StardewValley.Object __instance, GameLocation location, int x, int y, Farmer who, ref bool __result)
         {
-            if (__instance.QualifiedItemId == ModEntry.MiniObeliskId || __instance.QualifiedItemId == ModEntry.CustomObeliskId)
+            if (__instance.QualifiedItemId == ModEntry.MiniObeliskId)
             {
                 Vector2 tile = new Vector2(x / 64, y / 64);
                 if (location.Objects.ContainsKey(tile)) { __result = false; return false; }
 
                 int count = 0;
-                foreach (var loc in Game1.locations) count += loc.Objects.Pairs.Count(p => p.Value.QualifiedItemId == ModEntry.MiniObeliskId || p.Value.QualifiedItemId == ModEntry.CustomObeliskId);
+                foreach (var loc in Game1.locations) count += loc.Objects.Pairs.Count(p => p.Value.QualifiedItemId == ModEntry.MiniObeliskId);
 
                 if (count >= 2)
                 {

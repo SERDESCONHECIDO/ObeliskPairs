@@ -15,7 +15,8 @@ namespace ObeliskPairs
 
     public class ModConfig
     {
-        public CraftMode Mode { get; set; } = CraftMode.OnSe;
+        // ALTERAÇÃO AQUI: Padrão agora é On
+        public CraftMode Mode { get; set; } = CraftMode.On; 
         public string RequiredArtifactId { get; set; } = "74"; // Fragmento Prismático
         public string CraftingIngredients { get; set; } = "334 1 335 1 336 1"; // 1 Cobre, 1 Ferro, 1 Ouro
     }
@@ -32,7 +33,10 @@ namespace ObeliskPairs
         public ModData Data { get; private set; }
         public ModConfig Config { get; private set; }
         private const string MiniObeliskId = "(BC)238";
+        private const string CustomObeliskId = "(BC)MeuObeliscoConectado";
         private const string MailFlag = "WizardObeliskLetterSent";
+        
+        private bool _isConditionMet = false;
 
         public override void Entry(IModHelper helper)
         {
@@ -71,9 +75,9 @@ namespace ObeliskPairs
                 e.Edit(asset =>
                 {
                     var data = asset.AsDictionary<string, BigCraftableData>().Data;
-                    data["MeuObeliscoConectado"] = new BigCraftableData
+                    data[CustomObeliskId] = new BigCraftableData
                     {
-                        Name = "MeuObeliscoConectado",
+                        Name = CustomObeliskId,
                         DisplayName = "Obelisco Conectado",
                         Description = "Conecta-se em pares ilimitados. Clique para viajar.",
                         Price = 1000,
@@ -89,22 +93,19 @@ namespace ObeliskPairs
             {
                 e.Edit(asset =>
                 {
-                    if (Game1.player == null) return;
-
                     var data = asset.AsDictionary<string, string>().Data;
                     
-                    // HIBERNAÇÃO DO VERDADEIRO: Remove a receita do Mini-Obelisco original do jogo
-                    data.Remove("238");
+                    data.Remove("Mini-Obelisk");
                     data.Remove("(BC)238");
+                    data.Remove("238");
 
                     bool shouldAdd = false;
-
                     if (Config.Mode == CraftMode.On) shouldAdd = true;
-                    else if (Config.Mode == CraftMode.OnSe && CheckConditions()) shouldAdd = true;
+                    else if (Config.Mode == CraftMode.OnSe && _isConditionMet) shouldAdd = true;
 
                     if (shouldAdd)
                     {
-                        data["MeuObeliscoConectado_Receita"] = $"{Config.CraftingIngredients}/Home/MeuObeliscoConectado/true/null/null";
+                        data["MeuObeliscoConectado_Receita"] = $"{Config.CraftingIngredients}/Home/{CustomObeliskId}/true/null/null";
                     }
                 });
             }
@@ -122,12 +123,15 @@ namespace ObeliskPairs
         {
             Data = this.Helper.Data.ReadSaveData<ModData>("obelisk-data") ?? new ModData();
             ScanLocation(Game1.currentLocation);
+            UpdateConditions();
             this.Helper.GameContent.InvalidateCache("Data/CraftingRecipes");
         }
 
         private void OnDayStarted(object sender, DayStartedEventArgs e)
         {
-            if (Config.Mode == CraftMode.OnSe && CheckConditions())
+            UpdateConditions();
+            
+            if (Config.Mode == CraftMode.OnSe && _isConditionMet)
             {
                 if (!Game1.player.mailReceived.Contains(MailFlag))
                 {
@@ -139,20 +143,31 @@ namespace ObeliskPairs
             this.Helper.GameContent.InvalidateCache("Data/CraftingRecipes");
         }
 
-        private bool CheckConditions()
+        private void UpdateConditions()
         {
-            if (Game1.player == null) return false;
-            if (Game1.player.getFriendshipHeartLevelForNPC("Wizard") < 5) return false;
+            if (Game1.player == null) { _isConditionMet = false; return; }
+            if (Game1.player.getFriendshipHeartLevelForNPC("Wizard") < 5) { _isConditionMet = false; return; }
 
             var museum = Game1.getLocationFromName("ArchaeologyHouse");
-            if (museum == null) return false;
+            if (museum == null) { _isConditionMet = false; return; }
 
             string targetId = $"(O){Config.RequiredArtifactId}";
-            return museum.Objects.Values.Any(obj => obj.QualifiedItemId == targetId);
+            _isConditionMet = museum.Objects.Values.Any(obj => obj.QualifiedItemId == targetId);
         }
 
-        private void OnWarped(object sender, WarpedEventArgs e) { if (e.IsLocalPlayer) ScanLocation(e.NewLocation); }
-        private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e) { if (e.Removed.Any(r => IsMiniObelisk(r.Value))) ScanLocation(e.Location); }
+        private void OnWarped(object sender, WarpedEventArgs e) 
+        { 
+            if (e.IsLocalPlayer) 
+            {
+                ScanLocation(e.NewLocation); 
+                UpdateConditions();
+            }
+        }
+        
+        private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e) 
+        { 
+            if (e.Removed.Any(r => IsMiniObelisk(r.Value))) ScanLocation(e.Location); 
+        }
 
         public void ScanLocation(GameLocation loc)
         {
@@ -221,7 +236,7 @@ namespace ObeliskPairs
             Game1.showRedMessage("Este Mini-Obelisco não está conectado a nenhum outro.");
         }
 
-        internal bool IsMiniObelisk(StardewValley.Object obj) => obj != null && (obj.QualifiedItemId == MiniObeliskId || obj.ItemId == "238" || obj.QualifiedItemId == "(BC)MeuObeliscoConectado");
+        internal bool IsMiniObelisk(StardewValley.Object obj) => obj != null && (obj.QualifiedItemId == MiniObeliskId || obj.QualifiedItemId == CustomObeliskId || obj.ItemId == "238");
     }
 
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
@@ -229,7 +244,7 @@ namespace ObeliskPairs
     {
         static void Postfix(GameLocation location, Item item, int x, int y, Farmer f, ref bool __result)
         {
-            if (!__result && (item?.QualifiedItemId == "(BC)238" || item?.QualifiedItemId == "(BC)MeuObeliscoConectado"))
+            if (!__result && (item?.QualifiedItemId == MiniObeliskId || item?.QualifiedItemId == CustomObeliskId))
             {
                 Vector2 tile = new Vector2(x / 64, y / 64);
                 if (!location.Objects.ContainsKey(tile) && !location.isWaterTile((int)tile.X, (int)tile.Y)) __result = true;
@@ -242,13 +257,13 @@ namespace ObeliskPairs
     {
         static bool Prefix(StardewValley.Object __instance, GameLocation location, int x, int y, Farmer who, ref bool __result)
         {
-            if (__instance.QualifiedItemId == "(BC)238" || __instance.QualifiedItemId == "(BC)MeuObeliscoConectado")
+            if (__instance.QualifiedItemId == MiniObeliskId || __instance.QualifiedItemId == CustomObeliskId)
             {
                 Vector2 tile = new Vector2(x / 64, y / 64);
                 if (location.Objects.ContainsKey(tile)) { __result = false; return false; }
 
                 int count = 0;
-                foreach (var loc in Game1.locations) count += loc.Objects.Pairs.Count(p => p.Value.QualifiedItemId == "(BC)238" || p.Value.QualifiedItemId == "(BC)MeuObeliscoConectado");
+                foreach (var loc in Game1.locations) count += loc.Objects.Pairs.Count(p => p.Value.QualifiedItemId == MiniObeliskId || p.Value.QualifiedItemId == CustomObeliskId);
 
                 if (count >= 2)
                 {

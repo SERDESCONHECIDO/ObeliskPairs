@@ -5,11 +5,22 @@ using HarmonyLib;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
+using StardewValley.GameData.BigCraftables;
 using Microsoft.Xna.Framework;
 using xTile.Dimensions;
 
 namespace ObeliskPairs
 {
+    public enum CraftMode { On, Off, OnSe }
+
+    public class ModConfig
+    {
+        public CraftMode Mode { get; set; } = CraftMode.OnSe;
+        public string RequiredArtifactId { get; set; } = "74"; // 74 = Fragmento Prismático
+        // A string da receita: ID Qtd ID Qtd. Base: 1 Cobre (334), 1 Ferro (335), 1 Ouro (336)
+        public string CraftingIngredients { get; set; } = "334 1 335 1 336 1"; 
+    }
+
     public class ModData
     {
         public List<string> Unpaired { get; set; } = new();
@@ -20,16 +31,19 @@ namespace ObeliskPairs
     {
         public static ModEntry Instance { get; private set; }
         public ModData Data { get; private set; }
-        
-        // O ID do Mini-Obelisco verdadeiro do jogo
+        public ModConfig Config { get; private set; }
         private const string MiniObeliskId = "(BC)238";
+        private const string MailFlag = "WizardObeliskLetterSent";
 
         public override void Entry(IModHelper helper)
         {
             Instance = this;
             Data = new ModData();
+            Config = helper.ReadConfig<ModConfig>();
 
+            helper.Events.Content.AssetRequested += OnAssetRequested;
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
+            helper.Events.GameLoop.DayStarted += OnDayStarted;
             helper.Events.Player.Warped += OnWarped;
             helper.Events.World.ObjectListChanged += OnObjectListChanged;
 
@@ -37,59 +51,118 @@ namespace ObeliskPairs
             harmony.PatchAll();
         }
 
+        private void OnAssetRequested(object sender, AssetRequestedEventArgs e)
+        {
+            if (e.NameWithoutLocale.IsEquivalentTo("Data/BigCraftables"))
+            {
+                e.Edit(asset =>
+                {
+                    var data = asset.AsDictionary<string, BigCraftableData>().Data;
+                    data["MeuObeliscoConectado"] = new BigCraftableData
+                    {
+                        Name = "MeuObeliscoConectado",
+                        DisplayName = "Obelisco Conectado",
+                        Description = "Conecta-se em pares ilimitados. Clique para viajar.",
+                        Price = 1000,
+                        Texture = "TileSheets/Craftables",
+                        SpriteIndex = 238,
+                        Fragility = 0,
+                        CanBePlacedOutdoors = true,
+                        CanBePlacedIndoors = true
+                    };
+                });
+            }
+            else if (e.NameWithoutLocale.IsEquivalentTo("Data/CraftingRecipes"))
+            {
+                e.Edit(asset =>
+                {
+                    var data = asset.AsDictionary<string, string>().Data;
+                    bool shouldAdd = false;
+
+                    if (Config.Mode == CraftMode.On) shouldAdd = true;
+                    else if (Config.Mode == CraftMode.OnSe && CheckConditions()) shouldAdd = true;
+
+                    if (shouldAdd)
+                    {
+                        // Usa a string de receita configurada pelo jogador
+                        data["MeuObeliscoConectado_Receita"] = $"{Config.CraftingIngredients}/Home/MeuObeliscoConectado/true/null/null";
+                    }
+                });
+            }
+            else if (e.NameWithoutLocale.IsEquivalentTo("Data/mail"))
+            {
+                e.Edit(asset =>
+                {
+                    var data = asset.AsDictionary<string, string>().Data;
+                    data["WizardObeliskLetter"] = 
+                        "Prezado(a) @,^Sinto uma energia antiga despertar. Sua dedicação ao estudo dos artefatos e nossa amizade revelaram um segredo há muito esquecido.^Os antigos obeliscos podem ser conectados em pares, permitindo viagens instantâneas entre eles. Acredito que você está pronto para dominar essa arte.^Que a magia o guie.^- Mago";
+                });
+            }
+        }
+
         private void OnSaveLoaded(object sender, SaveLoadedEventArgs e)
         {
             Data = this.Helper.Data.ReadSaveData<ModData>("obelisk-data") ?? new ModData();
             ScanLocation(Game1.currentLocation);
+            
+            // Força o jogo a recarregar a receita para aplicar a config atual
+            this.Helper.GameContent.InvalidateCache("Data/CraftingRecipes");
         }
 
-        private void OnWarped(object sender, WarpedEventArgs e)
+        private void OnDayStarted(object sender, DayStartedEventArgs e)
         {
-            if (e.IsLocalPlayer) ScanLocation(e.NewLocation);
-        }
-
-        private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e)
-        {
-            if (e.Removed.Any(r => IsMiniObelisk(r.Value)))
+            // Verifica se as condições foram atendidas e se a carta ainda não foi enviada
+            if (Config.Mode == CraftMode.OnSe && CheckConditions())
             {
-                ScanLocation(e.Location);
+                if (!Game1.player.mailReceived.Contains(MailFlag))
+                {
+                    Game1.addMailForTomorrow("WizardObeliskLetter");
+                    Game1.player.mailReceived.Add(MailFlag);
+                    this.Monitor.Log("Carta do Mago agendada para amanhã.", LogLevel.Info);
+                }
             }
+
+            // Atualiza a receita caso o jogador tenha mudado a configuração no dia anterior
+            this.Helper.GameContent.InvalidateCache("Data/CraftingRecipes");
         }
+
+        private bool CheckConditions()
+        {
+            // 1. Ter 5 corações com o Mago
+            if (Game1.player.getFriendshipHeartLevelForNPC("Wizard") < 5) return false;
+
+            // 2. Ter doado o artefato específico no museu
+            // O método museumPieces.ContainsValue verifica se o ID está doado no museu
+            if (!Game1.player.museumPieces.ContainsValue(Config.RequiredArtifactId)) return false;
+
+            return true;
+        }
+
+        // --- Métodos de Teleporte (Lógica original mantida) ---
+        private void OnWarped(object sender, WarpedEventArgs e) { if (e.IsLocalPlayer) ScanLocation(e.NewLocation); }
+        private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e) { if (e.Removed.Any(r => IsMiniObelisk(r.Value))) ScanLocation(e.Location); }
 
         public void ScanLocation(GameLocation loc)
         {
             if (loc == null) return;
             bool changed = false;
-            
-            var obelisks = loc.Objects.Pairs
-                .Where(p => IsMiniObelisk(p.Value))
-                .OrderBy(p => p.Key.Y)
-                .ThenBy(p => p.Key.X)
-                .ToList();
-
+            var obelisks = loc.Objects.Pairs.Where(p => IsMiniObelisk(p.Value)).OrderBy(p => p.Key.Y).ThenBy(p => p.Key.X).ToList();
             foreach (var obj in obelisks)
             {
                 string key = $"{loc.NameOrUniqueName}|{(int)obj.Key.X}|{(int)obj.Key.Y}";
-                if (!Data.Pairs.ContainsKey(key) && !Data.Unpaired.Contains(key))
-                {
-                    if (RegisterNew(key, false)) changed = true;
-                }
+                if (!Data.Pairs.ContainsKey(key) && !Data.Unpaired.Contains(key)) { if (RegisterNew(key, false)) changed = true; }
             }
-            
             var currentKeys = obelisks.Select(o => $"{loc.NameOrUniqueName}|{(int)o.Key.X}|{(int)o.Key.Y}").ToHashSet();
             var deadKeys = Data.Unpaired.Where(k => k.StartsWith(loc.NameOrUniqueName + "|") && !currentKeys.Contains(k)).ToList();
             foreach (var k in deadKeys) { Data.Unpaired.Remove(k); changed = true; }
-            
             var deadPairs = Data.Pairs.Keys.Where(k => k.StartsWith(loc.NameOrUniqueName + "|") && !currentKeys.Contains(k)).ToList();
             foreach (var k in deadPairs) { Unregister(k); changed = true; }
-
             if (changed) this.Helper.Data.WriteSaveData("obelisk-data", Data);
         }
 
         public bool RegisterNew(string key, bool save = true)
         {
             if (Data.Pairs.ContainsKey(key) || Data.Unpaired.Contains(key)) return false;
-
             if (Data.Unpaired.Count > 0)
             {
                 string partner = Data.Unpaired[0];
@@ -109,20 +182,12 @@ namespace ObeliskPairs
 
         public bool Unregister(string key)
         {
-            if (Data.Unpaired.Contains(key))
-            {
-                Data.Unpaired.Remove(key);
-                this.Helper.Data.WriteSaveData("obelisk-data", Data);
-                return true;
-            }
+            if (Data.Unpaired.Contains(key)) { Data.Unpaired.Remove(key); this.Helper.Data.WriteSaveData("obelisk-data", Data); return true; }
             else if (Data.Pairs.TryGetValue(key, out var partner))
             {
-                Data.Pairs.Remove(key);
-                Data.Pairs.Remove(partner);
-                Data.Unpaired.Add(partner);
+                Data.Pairs.Remove(key); Data.Pairs.Remove(partner); Data.Unpaired.Add(partner);
                 Game1.showGlobalMessage("Um Mini-Obelisco foi removido. O par voltou a ficar solteiro.");
-                this.Helper.Data.WriteSaveData("obelisk-data", Data);
-                return true;
+                this.Helper.Data.WriteSaveData("obelisk-data", Data); return true;
             }
             return false;
         }
@@ -130,34 +195,24 @@ namespace ObeliskPairs
         internal void HandleInteraction(string locationName, Vector2 tile)
         {
             string clickedKey = $"{locationName}|{(int)tile.X}|{(int)tile.Y}";
-
             if (Data.Pairs.TryGetValue(clickedKey, out var targetKey))
             {
                 var parts = targetKey.Split('|');
-                string locName = parts[0];
-                int x = int.Parse(parts[1]);
-                int y = int.Parse(parts[2]);
-
-                GameLocation loc = Game1.getLocationFromName(locName);
+                GameLocation loc = Game1.getLocationFromName(parts[0]);
+                int x = int.Parse(parts[1]); int y = int.Parse(parts[2]);
                 if (loc != null && loc.Objects.TryGetValue(new Vector2(x, y), out var targetObj) && IsMiniObelisk(targetObj))
                 {
-                    Game1.warpFarmer(locName, x, y + 1, 2);
-                    Game1.showGlobalMessage("Teleportado!");
-                    return;
+                    Game1.warpFarmer(parts[0], x, y + 1, 2);
+                    Game1.showGlobalMessage("Teleportado!"); return;
                 }
             }
-
             Game1.showRedMessage("Este Mini-Obelisco não está conectado a nenhum outro.");
         }
 
-        internal bool IsMiniObelisk(StardewValley.Object obj)
-        {
-            if (obj == null) return false;
-            return obj.QualifiedItemId == MiniObeliskId || obj.ItemId == "238";
-        }
+        internal bool IsMiniObelisk(StardewValley.Object obj) => obj != null && (obj.QualifiedItemId == MiniObeliskId || obj.ItemId == "238");
     }
 
-    // --- PATCH 1: Permite colocar fora da fazenda ---
+    // --- Harmony Patches (Mantidos) ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {
@@ -166,15 +221,11 @@ namespace ObeliskPairs
             if (!__result && item?.QualifiedItemId == "(BC)238")
             {
                 Vector2 tile = new Vector2(x / 64, y / 64);
-                if (!location.Objects.ContainsKey(tile) && !location.isWaterTile((int)tile.X, (int)tile.Y))
-                {
-                    __result = true;
-                }
+                if (!location.Objects.ContainsKey(tile) && !location.isWaterTile((int)tile.X, (int)tile.Y)) __result = true;
             }
         }
     }
 
-    // --- PATCH 2: Remove o limite e clona o item EXATO (Mantém a textura correta) ---
     [HarmonyPatch(typeof(StardewValley.Object), nameof(StardewValley.Object.placementAction))]
     public static class MiniObeliskLimitPatch
     {
@@ -183,70 +234,42 @@ namespace ObeliskPairs
             if (__instance.QualifiedItemId == "(BC)238")
             {
                 Vector2 tile = new Vector2(x / 64, y / 64);
-                if (location.Objects.ContainsKey(tile))
-                {
-                    __result = false;
-                    return false;
-                }
+                if (location.Objects.ContainsKey(tile)) { __result = false; return false; }
 
                 int count = 0;
-                foreach (var loc in Game1.locations)
-                    count += loc.Objects.Pairs.Count(p => p.Value.QualifiedItemId == "(BC)238");
+                foreach (var loc in Game1.locations) count += loc.Objects.Pairs.Count(p => p.Value.QualifiedItemId == "(BC)238");
 
-                // Se o jogador já tiver 2 Mini-Obeliscos no mundo, nós forçamos a colocação
                 if (count >= 2)
                 {
-                    // A MÁGICA: Clona o item que está na sua mão (BigCraftable perfeito)
                     var newObelisk = (StardewValley.Object)__instance.getOne();
                     newObelisk.TileLocation = tile;
                     newObelisk.Location = location;
-                    
-                    // Adiciona ao mapa (colisão e textura nativas)
                     location.setObject(tile, newObelisk);
                     
-                    // Remove o item do seu inventário
-                    if (who != null && who.ActiveItem != null && who.ActiveItem.Stack > 0)
-                        who.reduceActiveItemByOne();
-                    else if (Game1.player.ActiveItem != null && Game1.player.ActiveItem.Stack > 0)
-                        Game1.player.reduceActiveItemByOne();
+                    if (who != null && who.ActiveItem != null && who.ActiveItem.Stack > 0) who.reduceActiveItemByOne();
+                    else if (Game1.player.ActiveItem != null && Game1.player.ActiveItem.Stack > 0) Game1.player.reduceActiveItemByOne();
 
-                    location.playSound("axe");
-                    location.playSound("stoneStep");
-
-                    // Registra a conexão na mesma hora
-                    string key = $"{location.NameOrUniqueName}|{(int)tile.X}|{(int)tile.Y}";
-                    ModEntry.Instance.RegisterNew(key);
-
-                    __result = true;
-                    return false; 
+                    location.playSound("axe"); location.playSound("stoneStep");
+                    ModEntry.Instance.RegisterNew($"{location.NameOrUniqueName}|{(int)tile.X}|{(int)tile.Y}");
+                    __result = true; return false; 
                 }
             }
-            return true; // Os 2 primeiros passam pela lógica normal do jogo
+            return true;
         }
     }
 
-    // --- PATCH 3: Interação (Teleporte) ---
     [HarmonyPatch]
     public static class CheckActionPatch
     {
-        static System.Reflection.MethodBase TargetMethod()
-        {
-            return AccessTools.GetDeclaredMethods(typeof(GameLocation))
-                .FirstOrDefault(m => m.Name == "checkAction" && m.GetParameters().Length >= 2 && m.GetParameters()[0].ParameterType == typeof(Location));
-        }
+        static System.Reflection.MethodBase TargetMethod() => AccessTools.GetDeclaredMethods(typeof(GameLocation)).FirstOrDefault(m => m.Name == "checkAction" && m.GetParameters().Length >= 2 && m.GetParameters()[0].ParameterType == typeof(Location));
 
         static bool Prefix(GameLocation __instance, object[] __args, ref bool __result)
         {
             Location? tileLocation = null;
-            foreach (var arg in __args)
-            {
-                if (arg is Location loc) { tileLocation = loc; break; }
-            }
-            
+            foreach (var arg in __args) { if (arg is Location loc) { tileLocation = loc; break; } }
             if (tileLocation == null) return true;
 
             ModEntry.Instance.ScanLocation(__instance);
-
             Vector2 clickedTile = new Vector2(tileLocation.Value.X, tileLocation.Value.Y);
 
             for (int yOffset = -1; yOffset <= 1; yOffset++)
@@ -255,8 +278,7 @@ namespace ObeliskPairs
                 if (__instance.Objects.TryGetValue(checkTile, out var obj) && ModEntry.Instance.IsMiniObelisk(obj))
                 {
                     ModEntry.Instance.HandleInteraction(__instance.NameOrUniqueName, obj.TileLocation);
-                    __result = true;
-                    return false;
+                    __result = true; return false;
                 }
             }
             return true;

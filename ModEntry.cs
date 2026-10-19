@@ -26,14 +26,13 @@ namespace ObeliskPairs
         public override void Entry(IModHelper helper)
         {
             Instance = this;
-            Data = new ModData(); // Inicialização segura
+            Data = new ModData();
 
             helper.Events.Content.AssetRequested += OnAssetRequested;
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
             helper.Events.Player.Warped += OnWarped;
             helper.Events.World.ObjectListChanged += OnObjectListChanged;
 
-            // Aplica o patch no jogo
             var harmony = new Harmony(this.ModManifest.UniqueID);
             harmony.PatchAll();
         }
@@ -72,7 +71,6 @@ namespace ObeliskPairs
         private void OnSaveLoaded(object sender, SaveLoadedEventArgs e)
         {
             Data = this.Helper.Data.ReadSaveData<ModData>("obelisk-data") ?? new ModData();
-            // Limpa fantasmas de testes antigos
             Data.Unpaired = Data.Unpaired.Where(k => !Data.Pairs.ContainsKey(k)).Distinct().ToList();
             ScanLocation(Game1.currentLocation);
         }
@@ -87,7 +85,6 @@ namespace ObeliskPairs
             if (loc == null) return;
             bool changed = false;
             
-            // Varre o mapa para achar obeliscos que já estavam lá
             var obelisks = loc.Objects.Pairs
                 .Where(p => IsObelisk(p.Value))
                 .OrderBy(p => p.Key.Y)
@@ -204,7 +201,6 @@ namespace ObeliskPairs
         }
     }
 
-    // --- HARMONY PATCH DEFINITIVO ---
     [HarmonyPatch]
     public static class CheckActionPatch
     {
@@ -216,7 +212,8 @@ namespace ObeliskPairs
 
         static bool Prefix(GameLocation __instance, object[] __args, ref bool __result)
         {
-            Location tileLocation = null;
+            // CORREÇÃO: Usar 'Location?' (nullable) para permitir null
+            Location? tileLocation = null;
             foreach (var arg in __args)
             {
                 if (arg is Location loc) { tileLocation = loc; break; }
@@ -224,7 +221,7 @@ namespace ObeliskPairs
             
             if (tileLocation == null) return true;
 
-            Vector2 clickedTile = new Vector2(tileLocation.X, tileLocation.Y);
+            Vector2 clickedTile = new Vector2(tileLocation.Value.X, tileLocation.Value.Y);
 
             for (int yOffset = -1; yOffset <= 1; yOffset++)
             {

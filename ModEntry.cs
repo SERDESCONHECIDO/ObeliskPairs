@@ -9,7 +9,6 @@ using Microsoft.Xna.Framework;
 
 namespace ObeliskPairs
 {
-    // Salva os pares diretamente: "A" aponta para "B", e "B" aponta para "A"
     public class ModData
     {
         public List<string> Unpaired { get; set; } = new();
@@ -63,7 +62,6 @@ namespace ObeliskPairs
         private void OnSaveLoaded(object sender, SaveLoadedEventArgs e)
         {
             Data = this.Helper.Data.ReadSaveData<ModData>("obelisk-data") ?? new ModData();
-            // Limpa fantasmas de testes anteriores
             Data.Unpaired = Data.Unpaired.Where(k => !Data.Pairs.ContainsKey(k)).Distinct().ToList();
         }
 
@@ -135,7 +133,8 @@ namespace ObeliskPairs
 
         private void OnButtonPressed(object sender, ButtonPressedEventArgs e)
         {
-            if (!e.Button.IsActionButton() && e.Button != SButton.MouseLeft) return;
+            // CORREÇÃO 1: Apenas o botão de AÇÃO (não intercepta o toque de andar na tela)
+            if (!e.Button.IsActionButton()) return;
             if (!Context.IsWorldReady) return;
 
             Vector2? targetTile = FindObeliskTile(Game1.currentLocation, Game1.currentCursorTile) 
@@ -144,7 +143,6 @@ namespace ObeliskPairs
             if (targetTile.HasValue)
             {
                 string clickedKey = $"{Game1.currentLocation.NameOrUniqueName}|{(int)targetTile.Value.X}|{(int)targetTile.Value.Y}";
-                this.Monitor.Log($"Você clicou no Obelisco: {clickedKey}", LogLevel.Info);
 
                 if (Data.Pairs.TryGetValue(clickedKey, out var targetKey))
                 {
@@ -164,7 +162,6 @@ namespace ObeliskPairs
                 }
 
                 Game1.showRedMessage("Este Obelisco não está conectado.");
-                this.Monitor.Log($"Falha ao conectar. Pares salvos: {string.Join(", ", Data.Pairs.Keys)} | Solteiros: {string.Join(", ", Data.Unpaired)}", LogLevel.Info);
                 this.Helper.Input.Suppress(e.Button);
             }
         }
@@ -176,13 +173,13 @@ namespace ObeliskPairs
 
         private Vector2? FindObeliskTile(GameLocation location, Vector2 tile)
         {
-            // Verifica o bloco exato, o de cima e o de baixo (para o toque no celular)
+            // CORREÇÃO 2: Retorna a posição BASE do objeto (TileLocation), não o bloco que foi clicado
             for (int yOffset = -1; yOffset <= 1; yOffset++)
             {
                 Vector2 checkTile = new Vector2(tile.X, tile.Y + yOffset);
                 if (location.Objects.TryGetValue(checkTile, out var obj) && IsObelisk(obj))
                 {
-                    return checkTile;
+                    return obj.TileLocation; 
                 }
             }
             return null;

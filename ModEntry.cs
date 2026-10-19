@@ -74,8 +74,8 @@ namespace ObeliskPairs
                 }
             }
             
+            // Limpeza de memória para obeliscos quebrados
             var currentKeys = obelisks.Select(o => $"{loc.NameOrUniqueName}|{(int)o.Key.X}|{(int)o.Key.Y}").ToHashSet();
-            
             var deadKeys = Data.Unpaired.Where(k => k.StartsWith(loc.NameOrUniqueName + "|") && !currentKeys.Contains(k)).ToList();
             foreach (var k in deadKeys) { Data.Unpaired.Remove(k); changed = true; }
             
@@ -156,6 +156,7 @@ namespace ObeliskPairs
         }
     }
 
+    // --- PATCH 1: Permite colocar fora da fazenda ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {
@@ -164,7 +165,8 @@ namespace ObeliskPairs
             if (!__result && item?.QualifiedItemId == "(BC)238")
             {
                 Vector2 tile = new Vector2(x / 64, y / 64);
-                if (!location.objects.ContainsKey(tile) && !location.isWaterTile((int)tile.X, (int)tile.Y))
+                // CORREÇÃO: location.Objects (com O maiúsculo)
+                if (!location.Objects.ContainsKey(tile) && !location.isWaterTile((int)tile.X, (int)tile.Y))
                 {
                     __result = true;
                 }
@@ -172,7 +174,7 @@ namespace ObeliskPairs
         }
     }
 
-    // --- PATCH 2: Executa a lógica nativa de colocação para o 3º obelisco em diante ---
+    // --- PATCH 2: Remove o limite e coloca o objeto tangível ---
     [HarmonyPatch(typeof(StardewValley.Object), nameof(StardewValley.Object.placementAction))]
     public static class MiniObeliskLimitPatch
     {
@@ -181,48 +183,46 @@ namespace ObeliskPairs
             if (__instance.QualifiedItemId == "(BC)238")
             {
                 Vector2 tile = new Vector2(x / 64, y / 64);
-                if (location.objects.ContainsKey(tile))
+                // CORREÇÃO: location.Objects (com O maiúsculo)
+                if (location.Objects.ContainsKey(tile))
                 {
                     __result = false;
                     return false;
                 }
 
-                // Conta os obeliscos existentes
                 int count = 0;
                 foreach (var loc in Game1.locations)
                     count += loc.Objects.Pairs.Count(p => p.Value.QualifiedItemId == "(BC)238");
 
-                // Se o jogador já tiver 2, nós ignoramos o bloqueio de limite
                 if (count >= 2)
                 {
-                    // --- CÓPIA EXATA DO COMPORTAMENTO DO JOGO BASE ---
-                    // 1. Remove o item do inventário
                     if (who != null) who.reduceActiveItemByOne();
                     else Game1.player.reduceActiveItemByOne();
 
-                    // 2. Sons de colocação
                     location.playSound("axe");
                     location.playSound("stoneStep");
 
-                    // 3. Propriedades do Objeto e Colisão
+                    // CORREÇÃO CRÍTICA: Configura a posição e a caixa de colisão manualmente
                     __instance.Location = location;
                     __instance.TileLocation = tile;
-                    location.setObject(tile, __instance);
-                    __instance.isSpawnedObject = false;
-                    __instance.initializeLightSource(tile);
+                    __instance.boundingBox.Value = new Rectangle((int)tile.X * 64, (int)tile.Y * 64, 64, 64);
                     
-                    // 4. Salva a conexão na mesma hora
+                    // Adiciona à lista de objetos do mapa
+                    location.Objects.Add(tile, __instance);
+                    
+                    // Registra a conexão na hora
                     string key = $"{location.NameOrUniqueName}|{(int)tile.X}|{(int)tile.Y}";
                     ModEntry.Instance.RegisterNew(key);
 
                     __result = true;
-                    return false; // Impede o jogo de rodar a verificação de limite dele
+                    return false; 
                 }
             }
-            return true; // Os 2 primeiros passam pelo jogo normal
+            return true; // Os 2 primeiros passam pela lógica original do jogo
         }
     }
 
+    // --- PATCH 3: Interação ---
     [HarmonyPatch]
     public static class CheckActionPatch
     {

@@ -32,7 +32,6 @@ namespace ObeliskPairs
         public ModData Data { get; private set; }
         public ModConfig Config { get; private set; }
 
-        // CORREÇÃO: Constantes agora são públicas para serem acessíveis nos patches
         public const string MiniObeliskId = "(BC)238";
         public const string CustomObeliskId = "(BC)MeuObeliscoConectado";
         public const string CustomObeliskName = "MeuObeliscoConectado";
@@ -97,6 +96,7 @@ namespace ObeliskPairs
                 {
                     var data = asset.AsDictionary<string, string>().Data;
                     
+                    // Hiberna o obelisco original do jogo
                     data.Remove("Mini-Obelisk");
                     data.Remove("(BC)238");
                     data.Remove("238");
@@ -107,7 +107,8 @@ namespace ObeliskPairs
 
                     if (shouldAdd)
                     {
-                        data["MeuObeliscoConectado_Receita"] = $"{Config.CraftingIngredients}/Home/{CustomObeliskId}/true/null/null";
+                        // CORREÇÃO FINAL: A saída é o CustomObeliskName (sem BC)
+                        data["MeuObeliscoConectado_Receita"] = $"{Config.CraftingIngredients}/Home/{CustomObeliskName}/true/null/null";
                     }
                 });
             }
@@ -238,7 +239,7 @@ namespace ObeliskPairs
             Game1.showRedMessage("Este Mini-Obelisco não está conectado a nenhum outro.");
         }
 
-        internal bool IsMiniObelisk(StardewValley.Object obj) => obj != null && (obj.QualifiedItemId == MiniObeliskId || obj.QualifiedItemId == CustomObeliskId || obj.ItemId == "238");
+        internal bool IsMiniObelisk(StardewValley.Object obj) => obj != null && (obj.QualifiedItemId == MiniObeliskId || obj.QualifiedItemId == CustomObeliskId || obj.ItemId == "238" || obj.ItemId == CustomObeliskName);
     }
 
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
@@ -246,7 +247,6 @@ namespace ObeliskPairs
     {
         static void Postfix(GameLocation location, Item item, int x, int y, Farmer f, ref bool __result)
         {
-            // CORREÇÃO: Referência qualificada às constantes públicas de ModEntry
             if (!__result && (item?.QualifiedItemId == ModEntry.MiniObeliskId || item?.QualifiedItemId == ModEntry.CustomObeliskId))
             {
                 Vector2 tile = new Vector2(x / 64, y / 64);

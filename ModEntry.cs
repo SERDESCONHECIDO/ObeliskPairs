@@ -22,7 +22,7 @@ namespace ObeliskPairs
         public ModData Data { get; private set; }
         
         // ID do Mini-Obelisco original do jogo
-        private const string ItemId = "(BC)238";
+        private const string MiniObeliskId = "(BC)238";
 
         public override void Entry(IModHelper helper)
         {
@@ -169,11 +169,11 @@ namespace ObeliskPairs
         internal bool IsMiniObelisk(StardewValley.Object obj)
         {
             if (obj == null) return false;
-            return obj.QualifiedItemId == ItemId || obj.ItemId == "238";
+            return obj.QualifiedItemId == MiniObeliskId || obj.ItemId == "238";
         }
     }
 
-    // --- PATCH 1: Permite colocar o Mini-Obelisco em qualquer lugar (fora da fazenda) ---
+    // --- PATCH 1: Permite colocar o Mini-Obelisco em qualquer lugar ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {
@@ -184,28 +184,33 @@ namespace ObeliskPairs
                 Vector2 tile = new Vector2(x / 64, y / 64);
                 if (!location.objects.ContainsKey(tile) && !location.isWaterTile((int)tile.X, (int)tile.Y))
                 {
-                    __result = true; // Força o jogo a permitir a colocação
+                    __result = true;
                 }
             }
         }
     }
 
-    // --- PATCH 2: Remove o limite de apenas 2 Mini-Obeliscos por save ---
-    [HarmonyPatch(typeof(StardewValley.Objects.MiniObelisk), nameof(StardewValley.Objects.MiniObelisk.placementAction))]
+    // --- PATCH 2: Remove o limite de 2 Mini-Obeliscos (intercepta a colocação) ---
+    [HarmonyPatch(typeof(StardewValley.Object), nameof(StardewValley.Object.placementAction))]
     public static class MiniObeliskLimitPatch
     {
-        static bool Prefix(StardewValley.Objects.MiniObelisk __instance, GameLocation location, int x, int y, Farmer who, ref bool __result)
+        static bool Prefix(StardewValley.Object __instance, GameLocation location, int x, int y, Farmer who, ref bool __result)
         {
-            Vector2 tile = new Vector2(x / 64, y / 64);
-            if (location.objects.ContainsKey(tile))
+            if (__instance.QualifiedItemId == "(BC)238")
             {
-                __result = false;
+                Vector2 tile = new Vector2(x / 64, y / 64);
+                if (location.objects.ContainsKey(tile))
+                {
+                    __result = false;
+                    return false;
+                }
+
+                // Coloca o item diretamente, ignorando a verificação de limite do jogo
+                location.objects.Add(tile, new StardewValley.Object("238", 1));
+                __result = true;
                 return false;
             }
-            // Ignora a checagem de limite do jogo e coloca o item no mapa
-            location.objects.Add(tile, __instance);
-            __result = true;
-            return false;
+            return true;
         }
     }
 
@@ -240,7 +245,7 @@ namespace ObeliskPairs
                 {
                     ModEntry.Instance.HandleInteraction(__instance.NameOrUniqueName, obj.TileLocation);
                     __result = true;
-                    return false; // Bloqueia o menu original do jogo
+                    return false;
                 }
             }
             return true;

@@ -20,6 +20,8 @@ namespace ObeliskPairs
     {
         public static ModEntry Instance { get; private set; }
         public ModData Data { get; private set; }
+        
+        // O ID do Mini-Obelisco verdadeiro do jogo
         private const string MiniObeliskId = "(BC)238";
 
         public override void Entry(IModHelper helper)
@@ -155,6 +157,7 @@ namespace ObeliskPairs
         }
     }
 
+    // --- PATCH 1: Permite colocar fora da fazenda ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {
@@ -171,7 +174,7 @@ namespace ObeliskPairs
         }
     }
 
-    // --- PATCH 2: Cria um NOVO objeto para garantir colisão perfeita ---
+    // --- PATCH 2: Remove o limite e clona o item EXATO (Mantém a textura correta) ---
     [HarmonyPatch(typeof(StardewValley.Object), nameof(StardewValley.Object.placementAction))]
     public static class MiniObeliskLimitPatch
     {
@@ -190,28 +193,27 @@ namespace ObeliskPairs
                 foreach (var loc in Game1.locations)
                     count += loc.Objects.Pairs.Count(p => p.Value.QualifiedItemId == "(BC)238");
 
-                // Se o jogador já tiver 2 obeliscos (limite vanilla)
+                // Se o jogador já tiver 2 Mini-Obeliscos no mundo, nós forçamos a colocação
                 if (count >= 2)
                 {
-                    // 1. Remove o item do inventário primeiro
-                    if (who != null) who.reduceActiveItemByOne();
-                    else Game1.player.reduceActiveItemByOne();
+                    // A MÁGICA: Clona o item que está na sua mão (BigCraftable perfeito)
+                    var newObelisk = (StardewValley.Object)__instance.getOne();
+                    newObelisk.TileLocation = tile;
+                    newObelisk.Location = location;
+                    
+                    // Adiciona ao mapa (colisão e textura nativas)
+                    location.setObject(tile, newObelisk);
+                    
+                    // Remove o item do seu inventário
+                    if (who != null && who.ActiveItem != null && who.ActiveItem.Stack > 0)
+                        who.reduceActiveItemByOne();
+                    else if (Game1.player.ActiveItem != null && Game1.player.ActiveItem.Stack > 0)
+                        Game1.player.reduceActiveItemByOne();
 
-                    // 2. Toca os sons
                     location.playSound("axe");
                     location.playSound("stoneStep");
 
-                    // 3. Cria uma INSTÂNCIA NOVA (evita o bug do clone fantasma)
-                    StardewValley.Object novoObelisco = new StardewValley.Object("238", 1);
-                    
-                    novoObelisco.TileLocation = tile;
-                    novoObelisco.Location = location;
-                    novoObelisco.boundingBox.Value = new Microsoft.Xna.Framework.Rectangle((int)tile.X * 64, (int)tile.Y * 64, 64, 64);
-
-                    // 4. Adiciona ao mapa
-                    location.setObject(tile, novoObelisco);
-                    
-                    // 5. Salva a conexão na mesma hora
+                    // Registra a conexão na mesma hora
                     string key = $"{location.NameOrUniqueName}|{(int)tile.X}|{(int)tile.Y}";
                     ModEntry.Instance.RegisterNew(key);
 
@@ -219,10 +221,11 @@ namespace ObeliskPairs
                     return false; 
                 }
             }
-            return true;
+            return true; // Os 2 primeiros passam pela lógica normal do jogo
         }
     }
 
+    // --- PATCH 3: Interação (Teleporte) ---
     [HarmonyPatch]
     public static class CheckActionPatch
     {

@@ -20,7 +20,6 @@ namespace ObeliskPairs
     {
         public static ModEntry Instance { get; private set; }
         public ModData Data { get; private set; }
-        
         private const string MiniObeliskId = "(BC)238";
 
         public override void Entry(IModHelper helper)
@@ -30,7 +29,6 @@ namespace ObeliskPairs
 
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
             helper.Events.Player.Warped += OnWarped;
-            helper.Events.World.ObjectListChanged += OnObjectListChanged;
 
             var harmony = new Harmony(this.ModManifest.UniqueID);
             harmony.PatchAll();
@@ -39,7 +37,6 @@ namespace ObeliskPairs
         private void OnSaveLoaded(object sender, SaveLoadedEventArgs e)
         {
             Data = this.Helper.Data.ReadSaveData<ModData>("obelisk-data") ?? new ModData();
-            Data.Unpaired = Data.Unpaired.Where(k => !Data.Pairs.ContainsKey(k)).Distinct().ToList();
             ScanLocation(Game1.currentLocation);
         }
 
@@ -48,38 +45,13 @@ namespace ObeliskPairs
             if (e.IsLocalPlayer) ScanLocation(e.NewLocation);
         }
 
-        private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e)
-        {
-            bool changed = false;
-
-            foreach (var added in e.Added)
-            {
-                if (IsMiniObelisk(added.Value))
-                {
-                    string key = $"{e.Location.NameOrUniqueName}|{(int)added.Key.X}|{(int)added.Key.Y}";
-                    if (RegisterNew(key)) changed = true;
-                }
-            }
-
-            foreach (var removed in e.Removed)
-            {
-                if (IsMiniObelisk(removed.Value))
-                {
-                    string key = $"{e.Location.NameOrUniqueName}|{(int)removed.Key.X}|{(int)removed.Key.Y}";
-                    if (Unregister(key)) changed = true;
-                }
-            }
-
-            if (changed) this.Helper.Data.WriteSaveData("obelisk-data", Data);
-            
-            ScanLocation(e.Location);
-        }
-
-        internal void ScanLocation(GameLocation loc)
+        // Função de segurança que varre o mapa e organiza os obeliscos na memória
+        public void ScanLocation(GameLocation loc)
         {
             if (loc == null) return;
             bool changed = false;
             
+            // Pega todos os obeliscos e ordena pela posição (Y depois X)
             var obelisks = loc.Objects.Pairs
                 .Where(p => IsMiniObelisk(p.Value))
                 .OrderBy(p => p.Key.Y)
@@ -91,13 +63,16 @@ namespace ObeliskPairs
                 string key = $"{loc.NameOrUniqueName}|{(int)obj.Key.X}|{(int)obj.Key.Y}";
                 if (!Data.Pairs.ContainsKey(key) && !Data.Unpaired.Contains(key))
                 {
-                    if (RegisterNew(key)) changed = true;
+                    if (RegisterNew(key, false)) changed = true;
                 }
             }
+            // Limpa pares onde um dos obeliscos foi quebrado
+            var brokenKeys = Data.Pairs.Keys.Where(k => !loc.NameOrUniqueName.StartsWith(k.Split('|')[0]) && !Game1.getLocationFromName(k.Split('|')[0]).Objects.ContainsKey(new Vector2(int.Parse(k.Split('|')[1]), int.Parse(k.Split('|')[2])))).ToList();
+            
             if (changed) this.Helper.Data.WriteSaveData("obelisk-data", Data);
         }
 
-        private bool RegisterNew(string key)
+        public bool RegisterNew(string key, bool save = true)
         {
             if (Data.Pairs.ContainsKey(key) || Data.Unpaired.Contains(key)) return false;
 
@@ -114,14 +89,16 @@ namespace ObeliskPairs
                 Data.Unpaired.Add(key);
                 Game1.showGlobalMessage("Mini-Obelisco aguardando conexão...");
             }
+            if (save) this.Helper.Data.WriteSaveData("obelisk-data", Data);
             return true;
         }
 
-        private bool Unregister(string key)
+        public bool Unregister(string key)
         {
             if (Data.Unpaired.Contains(key))
             {
                 Data.Unpaired.Remove(key);
+                this.Helper.Data.WriteSaveData("obelisk-data", Data);
                 return true;
             }
             else if (Data.Pairs.TryGetValue(key, out var partner))
@@ -130,6 +107,7 @@ namespace ObeliskPairs
                 Data.Pairs.Remove(partner);
                 Data.Unpaired.Add(partner);
                 Game1.showGlobalMessage("Um Mini-Obelisco foi removido. O par voltou a ficar solteiro.");
+                this.Helper.Data.WriteSaveData("obelisk-data", Data);
                 return true;
             }
             return false;
@@ -172,6 +150,7 @@ namespace ObeliskPairs
         }
     }
 
+    // --- PATCH 1: Permite colocar fora da fazenda ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {
@@ -188,6 +167,7 @@ namespace ObeliskPairs
         }
     }
 
+    // --- PATCH 2: Remove o limite e força a colisão correta ---
     [HarmonyPatch(typeof(StardewValley.Object), nameof(StardewValley.Object.placementAction))]
     public static class MiniObeliskLimitPatch
     {
@@ -202,16 +182,27 @@ namespace ObeliskPairs
                     return false;
                 }
 
-                // CORREÇÃO: Coloca o item ORIGINAL, mantendo a textura correta do Mini-Obelisco
+                // CONFIGURAÇÃO DE COLISÃO E POSIÇÃO
                 __instance.TileLocation = tile;
+                __instance.Location = location; // <- Isso faz o jogo saber onde o objeto está
+                __instance.boundingBox.Value = new Rectangle((int)tile.X * 64, (int)tile.Y * 64, 64, 64); // <- Cria a caixa invisível de colisão
+                __instance.is_temporarilyInInventory = false;
+
+                // Adiciona ao mapa
                 location.objects.Add(tile, __instance);
+                
+                // Registra a conexão na mesma hora (evita o bug do Android)
+                string key = $"{location.NameOrUniqueName}|{(int)tile.X}|{(int)tile.Y}";
+                ModEntry.Instance.RegisterNew(key);
+
                 __result = true;
-                return false;
+                return false; 
             }
             return true;
         }
     }
 
+    // --- PATCH 3: Interação (Teleporte) ---
     [HarmonyPatch]
     public static class CheckActionPatch
     {
@@ -231,6 +222,7 @@ namespace ObeliskPairs
             
             if (tileLocation == null) return true;
 
+            // Verifica a área antes de processar o clique
             ModEntry.Instance.ScanLocation(__instance);
 
             Vector2 clickedTile = new Vector2(tileLocation.Value.X, tileLocation.Value.Y);

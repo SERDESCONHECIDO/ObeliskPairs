@@ -15,10 +15,9 @@ namespace ObeliskPairs
 
     public class ModConfig
     {
-        // ALTERAÇÃO AQUI: Padrão agora é On
-        public CraftMode Mode { get; set; } = CraftMode.On; 
-        public string RequiredArtifactId { get; set; } = "74"; // Fragmento Prismático
-        public string CraftingIngredients { get; set; } = "334 1 335 1 336 1"; // 1 Cobre, 1 Ferro, 1 Ouro
+        public CraftMode Mode { get; set; } = CraftMode.On;
+        public string RequiredArtifactId { get; set; } = "74";
+        public string CraftingIngredients { get; set; } = "334 1 335 1 336 1";
     }
 
     public class ModData
@@ -34,6 +33,7 @@ namespace ObeliskPairs
         public ModConfig Config { get; private set; }
         private const string MiniObeliskId = "(BC)238";
         private const string CustomObeliskId = "(BC)MeuObeliscoConectado";
+        private const string CustomObeliskName = "MeuObeliscoConectado";
         private const string MailFlag = "WizardObeliskLetterSent";
         
         private bool _isConditionMet = false;
@@ -75,9 +75,10 @@ namespace ObeliskPairs
                 e.Edit(asset =>
                 {
                     var data = asset.AsDictionary<string, BigCraftableData>().Data;
-                    data[CustomObeliskId] = new BigCraftableData
+                    // CORREÇÃO: A chave no dicionário NÃO tem (BC)
+                    data[CustomObeliskName] = new BigCraftableData
                     {
-                        Name = CustomObeliskId,
+                        Name = CustomObeliskName, // Nome interno sem (BC)
                         DisplayName = "Obelisco Conectado",
                         Description = "Conecta-se em pares ilimitados. Clique para viajar.",
                         Price = 1000,
@@ -105,6 +106,7 @@ namespace ObeliskPairs
 
                     if (shouldAdd)
                     {
+                        // O output da receita usa o QualifiedItemId (com BC)
                         data["MeuObeliscoConectado_Receita"] = $"{Config.CraftingIngredients}/Home/{CustomObeliskId}/true/null/null";
                     }
                 });

@@ -5,7 +5,6 @@ using HarmonyLib;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
-using StardewValley.GameData.BigCraftables;
 using Microsoft.Xna.Framework;
 using xTile.Dimensions;
 
@@ -21,51 +20,21 @@ namespace ObeliskPairs
     {
         public static ModEntry Instance { get; private set; }
         public ModData Data { get; private set; }
-        private const string ItemId = "(BC)ObeliscoPares_Item";
+
+        // ID do Mini-Obelisco original do jogo
+        private const string MiniObeliskId = "(BC)238";
 
         public override void Entry(IModHelper helper)
         {
             Instance = this;
             Data = new ModData();
 
-            helper.Events.Content.AssetRequested += OnAssetRequested;
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
             helper.Events.Player.Warped += OnWarped;
             helper.Events.World.ObjectListChanged += OnObjectListChanged;
 
             var harmony = new Harmony(this.ModManifest.UniqueID);
             harmony.PatchAll();
-        }
-
-        private void OnAssetRequested(object sender, AssetRequestedEventArgs e)
-        {
-            if (e.NameWithoutLocale.IsEquivalentTo("Data/BigCraftables"))
-            {
-                e.Edit(asset =>
-                {
-                    var data = asset.AsDictionary<string, BigCraftableData>().Data;
-                    data["ObeliscoPares_Item"] = new BigCraftableData
-                    {
-                        Name = "ObeliscoPares_Item",
-                        DisplayName = "Obelisco Conectado",
-                        Description = "Clique para viajar para o obelisco conectado.",
-                        Price = 5000,
-                        Texture = "TileSheets/Craftables",
-                        SpriteIndex = 238,
-                        Fragility = 0,
-                        CanBePlacedOutdoors = true,
-                        CanBePlacedIndoors = true
-                    };
-                });
-            }
-            else if (e.NameWithoutLocale.IsEquivalentTo("Data/CraftingRecipes"))
-            {
-                e.Edit(asset =>
-                {
-                    var data = asset.AsDictionary<string, string>().Data;
-                    data["ObeliscoPares_Receita"] = "390 100 787 5/Home/ObeliscoPares_Item/true/null/null";
-                });
-            }
         }
 
         private void OnSaveLoaded(object sender, SaveLoadedEventArgs e)
@@ -84,10 +53,18 @@ namespace ObeliskPairs
         {
             bool changed = false;
 
-            // Processa as remoções (picaretada)
+            foreach (var added in e.Added)
+            {
+                if (IsMiniObelisk(added.Value))
+                {
+                    string key = $"{e.Location.NameOrUniqueName}|{(int)added.Key.X}|{(int)added.Key.Y}";
+                    if (RegisterNew(key)) changed = true;
+                }
+            }
+
             foreach (var removed in e.Removed)
             {
-                if (IsObelisk(removed.Value))
+                if (IsMiniObelisk(removed.Value))
                 {
                     string key = $"{e.Location.NameOrUniqueName}|{(int)removed.Key.X}|{(int)removed.Key.Y}";
                     if (Unregister(key)) changed = true;
@@ -95,20 +72,17 @@ namespace ObeliskPairs
             }
 
             if (changed) this.Helper.Data.WriteSaveData("obelisk-data", Data);
-
-            // FAILSAFE: Em vez de confiar no e.Added (que falha no Android), 
-            // nós simplesmente varremos a área inteira para registrar qualquer obelisco novo.
+            
             ScanLocation(e.Location);
         }
 
-        // Varre a área e organiza os obeliscos por ordem de colocação (Y, depois X)
         internal void ScanLocation(GameLocation loc)
         {
             if (loc == null) return;
             bool changed = false;
             
             var obelisks = loc.Objects.Pairs
-                .Where(p => IsObelisk(p.Value))
+                .Where(p => IsMiniObelisk(p.Value))
                 .OrderBy(p => p.Key.Y)
                 .ThenBy(p => p.Key.X)
                 .ToList();
@@ -134,12 +108,12 @@ namespace ObeliskPairs
                 Data.Unpaired.RemoveAt(0);
                 Data.Pairs[key] = partner;
                 Data.Pairs[partner] = key;
-                Game1.showGlobalMessage("Dois Obeliscos foram conectados!");
+                Game1.showGlobalMessage("Dois Mini-Obeliscos foram conectados!");
             }
             else
             {
                 Data.Unpaired.Add(key);
-                Game1.showGlobalMessage("Obelisco aguardando conexão...");
+                Game1.showGlobalMessage("Mini-Obelisco aguardando conexão...");
             }
             return true;
         }
@@ -156,7 +130,7 @@ namespace ObeliskPairs
                 Data.Pairs.Remove(key);
                 Data.Pairs.Remove(partner);
                 Data.Unpaired.Add(partner);
-                Game1.showGlobalMessage("Um Obelisco foi destruído. O par voltou a ficar solteiro.");
+                Game1.showGlobalMessage("Um Mini-Obelisco foi removido. O par voltou a ficar solteiro.");
                 return true;
             }
             return false;
@@ -174,7 +148,7 @@ namespace ObeliskPairs
                 int y = int.Parse(parts[2]);
 
                 GameLocation loc = Game1.getLocationFromName(locName);
-                if (loc != null && loc.Objects.TryGetValue(new Vector2(x, y), out var targetObj) && IsObelisk(targetObj))
+                if (loc != null && loc.Objects.TryGetValue(new Vector2(x, y), out var targetObj) && IsMiniObelisk(targetObj))
                 {
                     Game1.warpFarmer(locName, x, y + 1, 2);
                     Game1.showGlobalMessage("Teleportado!");
@@ -189,15 +163,17 @@ namespace ObeliskPairs
                 }
             }
 
-            Game1.showRedMessage("Este Obelisco não está conectado.");
+            Game1.showRedMessage("Este Mini-Obelisco não está conectado a nenhum outro.");
         }
 
-        internal bool IsObelisk(StardewValley.Object obj)
+        internal bool IsMiniObelisk(StardewValley.Object obj)
         {
-            return obj.QualifiedItemId == ItemId || obj.ItemId == "ObeliscoPares_Item" || obj.Name == "ObeliscoPares_Item";
+            if (obj == null) return false;
+            return obj.QualifiedItemId == MiniObeliskId || obj.ItemId == "238";
         }
     }
 
+    // --- HARMONY PATCH (Intercepta o clique no Mini-Obelisco) ---
     [HarmonyPatch]
     public static class CheckActionPatch
     {
@@ -217,7 +193,6 @@ namespace ObeliskPairs
             
             if (tileLocation == null) return true;
 
-            // FAILSAFE FINAL: Varre a área no exato milissegundo do clique
             ModEntry.Instance.ScanLocation(__instance);
 
             Vector2 clickedTile = new Vector2(tileLocation.Value.X, tileLocation.Value.Y);
@@ -225,11 +200,11 @@ namespace ObeliskPairs
             for (int yOffset = -1; yOffset <= 1; yOffset++)
             {
                 Vector2 checkTile = new Vector2(clickedTile.X, clickedTile.Y + yOffset);
-                if (__instance.Objects.TryGetValue(checkTile, out var obj) && ModEntry.Instance.IsObelisk(obj))
+                if (__instance.Objects.TryGetValue(checkTile, out var obj) && ModEntry.Instance.IsMiniObelisk(obj))
                 {
                     ModEntry.Instance.HandleInteraction(__instance.NameOrUniqueName, obj.TileLocation);
                     __result = true;
-                    return false; 
+                    return false; // Bloqueia a lógica vanilla de teleporte do Mini-Obelisco
                 }
             }
             return true;

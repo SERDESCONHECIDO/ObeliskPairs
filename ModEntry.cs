@@ -29,6 +29,7 @@ namespace ObeliskPairs
 
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
             helper.Events.Player.Warped += OnWarped;
+            helper.Events.World.ObjectListChanged += OnObjectListChanged;
 
             var harmony = new Harmony(this.ModManifest.UniqueID);
             harmony.PatchAll();
@@ -45,6 +46,16 @@ namespace ObeliskPairs
             if (e.IsLocalPlayer) ScanLocation(e.NewLocation);
         }
 
+        private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e)
+        {
+            // Se um obelisco for quebrado, atualiza a memória e libera o par
+            if (e.Removed.Any(r => IsMiniObelisk(r.Value)))
+            {
+                ScanLocation(e.Location);
+            }
+        }
+
+        // A varredura lê a posição DIRETO do mapa, eliminando qualquer erro de coordenada
         public void ScanLocation(GameLocation loc)
         {
             if (loc == null) return;
@@ -65,6 +76,15 @@ namespace ObeliskPairs
                 }
             }
             
+            // Limpeza de segurança: remove da memória obeliscos que não existem mais
+            var currentKeys = obelisks.Select(o => $"{loc.NameOrUniqueName}|{(int)o.Key.X}|{(int)o.Key.Y}").ToHashSet();
+            
+            var deadKeys = Data.Unpaired.Where(k => k.StartsWith(loc.NameOrUniqueName + "|") && !currentKeys.Contains(k)).ToList();
+            foreach (var k in deadKeys) { Data.Unpaired.Remove(k); changed = true; }
+            
+            var deadPairs = Data.Pairs.Keys.Where(k => k.StartsWith(loc.NameOrUniqueName + "|") && !currentKeys.Contains(k)).ToList();
+            foreach (var k in deadPairs) { Unregister(k); changed = true; }
+
             if (changed) this.Helper.Data.WriteSaveData("obelisk-data", Data);
         }
 
@@ -127,13 +147,6 @@ namespace ObeliskPairs
                     Game1.showGlobalMessage("Teleportado!");
                     return;
                 }
-                else
-                {
-                    Data.Pairs.Remove(clickedKey);
-                    Data.Pairs.Remove(targetKey);
-                    Data.Unpaired.Add(clickedKey);
-                    this.Helper.Data.WriteSaveData("obelisk-data", Data);
-                }
             }
 
             Game1.showRedMessage("Este Mini-Obelisco não está conectado a nenhum outro.");
@@ -146,6 +159,7 @@ namespace ObeliskPairs
         }
     }
 
+    // --- PATCH 1: Permite colocar fora da fazenda ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {
@@ -162,6 +176,7 @@ namespace ObeliskPairs
         }
     }
 
+    // --- PATCH 2: Remove o limite e configura a colisão e posição corretamente ---
     [HarmonyPatch(typeof(StardewValley.Object), nameof(StardewValley.Object.placementAction))]
     public static class MiniObeliskLimitPatch
     {
@@ -176,26 +191,32 @@ namespace ObeliskPairs
                     return false;
                 }
 
-                __instance.TileLocation = tile;
-                __instance.Location = location;
-                
-                // CORREÇÃO 1: Especifica que o Rectangle é o do XNA (Microsoft.Xna.Framework)
-                __instance.boundingBox.Value = new Microsoft.Xna.Framework.Rectangle((int)tile.X * 64, (int)tile.Y * 64, 64, 64);
-                
-                // CORREÇÃO 2: A linha 'is_temporarilyInInventory' foi removida
+                int count = 0;
+                foreach (var loc in Game1.locations)
+                    count += loc.Objects.Pairs.Count(p => p.Value.QualifiedItemId == "(BC)238");
 
-                location.objects.Add(tile, __instance);
-                
-                string key = $"{location.NameOrUniqueName}|{(int)tile.X}|{(int)tile.Y}";
-                ModEntry.Instance.RegisterNew(key);
+                // Se já tiver 2 obeliscos no jogo, nós forçamos a colocação
+                if (count >= 2)
+                {
+                    // CORREÇÃO CRÍTICA: Define a posição e o local para criar a caixa de colisão (evita ser intangível)
+                    __instance.TileLocation = tile;
+                    __instance.Location = location;
+                    
+                    // Adiciona ao mapa
+                    location.objects.Add(tile, __instance);
+                    
+                    // CORREÇÃO CRÍTICA: Roda a varredura do mapa na hora (evita ter que relogar para conectar)
+                    ModEntry.Instance.ScanLocation(location);
 
-                __result = true;
-                return false; 
+                    __result = true;
+                    return false; 
+                }
             }
             return true;
         }
     }
 
+    // --- PATCH 3: Interação (Teleporte) ---
     [HarmonyPatch]
     public static class CheckActionPatch
     {

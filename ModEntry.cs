@@ -54,53 +54,13 @@ namespace ObeliscoConectado
 
         private void OnGameLaunched(object sender, GameLaunchedEventArgs e)
         {
-            this.Monitor.Log("Tentando carregar o menu de configuracao (GMCM)...", LogLevel.Info);
-            try
+            var api = this.Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>("spacechase0.GenericModConfigMenu");
+            if (api != null)
             {
-                var api = this.Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>("spacechase0.GenericModConfigMenu");
-                if (api == null)
-                {
-                    this.Monitor.Log("A API do GMCM nao foi encontrada! O mod GenericModConfigMenu esta instalado?", LogLevel.Error);
-                    return;
-                }
-
-                this.Monitor.Log("API do GMCM encontrada! Registrando o mod...", LogLevel.Info);
-                api.Register(
-                    mod: this.ModManifest,
-                    reset: () => Config = new ModConfig(),
-                    save: () => this.Helper.WriteConfig(Config)
-                );
-
-                api.AddTextOption(
-                    mod: this.ModManifest,
-                    getValue: () => Config.Mode.ToString(),
-                    setValue: value => Config.Mode = Enum.Parse<CraftMode>(value),
-                    name: () => "Modo de Craft",
-                    tooltip: () => "On = Sempre, Off = Nunca, OnSe = Condicional",
-                    allowedValues: new[] { "On", "Off", "OnSe" }
-                );
-
-                api.AddTextOption(
-                    mod: this.ModManifest,
-                    getValue: () => Config.RequiredArtifactId,
-                    setValue: value => Config.RequiredArtifactId = value,
-                    name: () => "ID do Artefato",
-                    tooltip: () => "ID do artefato necessario (padrao: 74)"
-                );
-
-                api.AddTextOption(
-                    mod: this.ModManifest,
-                    getValue: () => Config.CraftingIngredients,
-                    setValue: value => Config.CraftingIngredients = value,
-                    name: () => "Ingredientes do Craft",
-                    tooltip: () => "IDs e Quantidades separados por espaco"
-                );
-                
-                this.Monitor.Log("Mod registrado no GMCM com sucesso!", LogLevel.Info);
-            }
-            catch (Exception ex)
-            {
-                this.Monitor.Log($"Erro ao registrar no GMCM: {ex.Message}", LogLevel.Error);
+                api.Register(this.ModManifest, () => Config = new ModConfig(), () => this.Helper.WriteConfig(Config));
+                api.AddTextOption(this.ModManifest, () => Config.Mode.ToString(), value => Config.Mode = Enum.Parse<CraftMode>(value), () => "Modo de Craft", () => "On = Sempre, Off = Nunca, OnSe = Condicional", new[] { "On", "Off", "OnSe" });
+                api.AddTextOption(this.ModManifest, () => Config.RequiredArtifactId, value => Config.RequiredArtifactId = value, () => "ID do Artefato", () => "ID do artefato necessário (padrão: 74)");
+                api.AddTextOption(this.ModManifest, () => Config.CraftingIngredients, value => Config.CraftingIngredients = value, () => "Ingredientes do Craft", () => "IDs e Quantidades separados por espaço");
             }
         }
 
@@ -120,15 +80,19 @@ namespace ObeliscoConectado
                 e.Edit(asset =>
                 {
                     var data = asset.AsDictionary<string, string>().Data;
-                    data.Remove("Mini-Obelisk");
-
+                    
                     bool shouldAdd = false;
                     if (Config.Mode == CraftMode.On) shouldAdd = true;
                     else if (Config.Mode == CraftMode.OnSe && _isConditionMet) shouldAdd = true;
 
                     if (shouldAdd)
                     {
-                        data["ObeliscoConectado_Receita"] = $"{Config.CraftingIngredients}/Home/238/true/default/Obelisco Conectado";
+                        data["Mini-Obelisk"] = $"{Config.CraftingIngredients}/Home/238/true/default/Obelisco Conectado";
+                    }
+                    else
+                    {
+                        // Se não for pra aparecer, deleta a receita do dicionário do jogo
+                        data.Remove("Mini-Obelisk");
                     }
                 });
             }
@@ -139,12 +103,20 @@ namespace ObeliscoConectado
             Data = this.Helper.Data.ReadSaveData<ModData>("obelisk-data") ?? new ModData();
             ScanLocation(Game1.currentLocation);
             UpdateConditions();
+            
+            // CORREÇÃO DA TOCHA: Remove a receita da memória do jogador se não for pra aparecer
+            if (Config.Mode == CraftMode.Off || (Config.Mode == CraftMode.OnSe && !_isConditionMet))
+            {
+                Game1.player.craftingRecipes.Remove("Mini-Obelisk");
+            }
+
             this.Helper.GameContent.InvalidateCache("Data/CraftingRecipes");
         }
 
         private void OnDayStarted(object sender, DayStartedEventArgs e)
         {
             UpdateConditions();
+            
             if (Config.Mode == CraftMode.OnSe && _isConditionMet)
             {
                 if (!Game1.player.mailReceived.Contains(MailFlag))
@@ -153,21 +125,51 @@ namespace ObeliscoConectado
                     Game1.player.mailReceived.Add(MailFlag);
                 }
             }
+            
+            // CORREÇÃO DA TOCHA: Garante que a receita não fique presa na memória se estiver Off
+            if (Config.Mode == CraftMode.Off || (Config.Mode == CraftMode.OnSe && !_isConditionMet))
+            {
+                Game1.player.craftingRecipes.Remove("Mini-Obelisk");
+            }
+
             this.Helper.GameContent.InvalidateCache("Data/CraftingRecipes");
         }
 
         private void UpdateConditions()
         {
             if (Game1.player == null) { _isConditionMet = false; return; }
+            
+            // 1. 5 Corações com o Mago
             if (Game1.player.getFriendshipHeartLevelForNPC("Wizard") < 5) { _isConditionMet = false; return; }
 
-            var museum = Game1.getLocationFromName("ArchaeologyHouse");
-            if (museum == null) { _isConditionMet = false; return; }
+            // 2. CORREÇÃO DO MUSEU 1.6: Verifica na lista museumPieces
+            bool donated = false;
+            try
+            {
+                // Na 1.6, museumPieces é um dicionário que guarda os IDs dos itens doados
+                if (Game1.player.museumPieces.ContainsKey(Config.RequiredArtifactId) || 
+                    Game1.player.museumPieces.ContainsValue(Config.RequiredArtifactId) ||
+                    Game1.player.museumPieces.ContainsValue($"(O){Config.RequiredArtifactId}"))
+                {
+                    donated = true;
+                }
+            }
+            catch
+            {
+                // Fallback caso a API do museu mude
+                var museum = Game1.getLocationFromName("ArchaeologyHouse");
+                if (museum != null)
+                {
+                    string targetId = $"(O){Config.RequiredArtifactId}";
+                    donated = museum.Objects.Values.Any(obj => obj.QualifiedItemId == targetId);
+                }
+            }
 
-            string targetId = $"(O){Config.RequiredArtifactId}";
-            _isConditionMet = museum.Objects.Values.Any(obj => obj.QualifiedItemId == targetId);
+            _isConditionMet = donated;
+            this.Monitor.Log($"OnSe - 5 Corações: OK | Artefato ({Config.RequiredArtifactId}) Doado: {donated} | Condição Final: {_isConditionMet}", LogLevel.Info);
         }
 
+        // --- LÓGICA DE TELEPORTE EM PARES ---
         private void OnWarped(object sender, WarpedEventArgs e) { if (e.IsLocalPlayer) ScanLocation(e.NewLocation); }
         private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e) { if (e.Removed.Any(r => IsMiniObelisk(r.Value))) ScanLocation(e.Location); }
 
@@ -235,6 +237,7 @@ namespace ObeliscoConectado
         internal bool IsMiniObelisk(StardewValley.Object obj) => obj != null && (obj.QualifiedItemId == MiniObeliskId || obj.ItemId == "238");
     }
 
+    // --- PATCHES HARMONY ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {

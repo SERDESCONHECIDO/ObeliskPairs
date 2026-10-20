@@ -18,6 +18,7 @@ jobs:
       run: |
         mkdir -p Mod_Pronto
         cp manifest.json Mod_Pronto/
+        cp config.json Mod_Pronto/  # <-- Adicionado aqui
         cp bin/Release/net6.0/ObeliscoConectado.dll Mod_Pronto/
     - name: Salvar Zip
       uses: actions/upload-artifact@v4

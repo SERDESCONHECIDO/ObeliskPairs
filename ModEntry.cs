@@ -39,8 +39,6 @@ namespace ObeliscoConectado
         {
             Instance = this;
             Data = new ModData();
-            
-            // Lê o config.json que já vem no zip
             Config = this.Helper.ReadConfig<ModConfig>();
 
             helper.Events.Content.AssetRequested += OnAssetRequested;
@@ -56,19 +54,23 @@ namespace ObeliscoConectado
 
         private void OnGameLaunched(object sender, GameLaunchedEventArgs e)
         {
-            // Tenta pegar a API do GMCM
-            var api = this.Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>("spacechase0.GenericModConfigMenu");
-            
-            if (api != null)
+            this.Monitor.Log("Tentando carregar o menu de configuracao (GMCM)...", LogLevel.Info);
+            try
             {
-                // Registra o mod no GMCM
+                var api = this.Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>("spacechase0.GenericModConfigMenu");
+                if (api == null)
+                {
+                    this.Monitor.Log("A API do GMCM nao foi encontrada! O mod GenericModConfigMenu esta instalado?", LogLevel.Error);
+                    return;
+                }
+
+                this.Monitor.Log("API do GMCM encontrada! Registrando o mod...", LogLevel.Info);
                 api.Register(
                     mod: this.ModManifest,
                     reset: () => Config = new ModConfig(),
                     save: () => this.Helper.WriteConfig(Config)
                 );
 
-                // Cria a aba de escolha para o Modo (On, Off, OnSe)
                 api.AddTextOption(
                     mod: this.ModManifest,
                     getValue: () => Config.Mode.ToString(),
@@ -78,23 +80,27 @@ namespace ObeliscoConectado
                     allowedValues: new[] { "On", "Off", "OnSe" }
                 );
 
-                // Cria a caixa de texto para o ID do Artefato
                 api.AddTextOption(
                     mod: this.ModManifest,
                     getValue: () => Config.RequiredArtifactId,
                     setValue: value => Config.RequiredArtifactId = value,
                     name: () => "ID do Artefato",
-                    tooltip: () => "ID do artefato necessário (padrão: 74)"
+                    tooltip: () => "ID do artefato necessario (padrao: 74)"
                 );
 
-                // Cria a caixa de texto para os Ingredientes
                 api.AddTextOption(
                     mod: this.ModManifest,
                     getValue: () => Config.CraftingIngredients,
                     setValue: value => Config.CraftingIngredients = value,
                     name: () => "Ingredientes do Craft",
-                    tooltip: () => "IDs e Quantidades separados por espaço"
+                    tooltip: () => "IDs e Quantidades separados por espaco"
                 );
+                
+                this.Monitor.Log("Mod registrado no GMCM com sucesso!", LogLevel.Info);
+            }
+            catch (Exception ex)
+            {
+                this.Monitor.Log($"Erro ao registrar no GMCM: {ex.Message}", LogLevel.Error);
             }
         }
 
@@ -162,7 +168,6 @@ namespace ObeliscoConectado
             _isConditionMet = museum.Objects.Values.Any(obj => obj.QualifiedItemId == targetId);
         }
 
-        // --- LÓGICA DE TELEPORTE EM PARES ---
         private void OnWarped(object sender, WarpedEventArgs e) { if (e.IsLocalPlayer) ScanLocation(e.NewLocation); }
         private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e) { if (e.Removed.Any(r => IsMiniObelisk(r.Value))) ScanLocation(e.Location); }
 
@@ -230,7 +235,6 @@ namespace ObeliscoConectado
         internal bool IsMiniObelisk(StardewValley.Object obj) => obj != null && (obj.QualifiedItemId == MiniObeliskId || obj.ItemId == "238");
     }
 
-    // --- PATCHES HARMONY ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {

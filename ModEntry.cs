@@ -10,15 +10,6 @@ using xTile.Dimensions;
 
 namespace ObeliskPairs
 {
-    public enum CraftMode { On, Off, OnSe }
-
-    public class ModConfig
-    {
-        public CraftMode Mode { get; set; } = CraftMode.On;
-        public string RequiredArtifactId { get; set; } = "74";
-        public string CraftingIngredients { get; set; } = "334 1 335 1 336 1"; // 1 Cobre, 1 Ferro, 1 Ouro
-    }
-
     public class ModData
     {
         public List<string> Unpaired { get; set; } = new();
@@ -29,22 +20,15 @@ namespace ObeliskPairs
     {
         public static ModEntry Instance { get; private set; }
         public ModData Data { get; private set; }
-        public ModConfig Config { get; private set; }
-
-        public const string MiniObeliskId = "(BC)238";
-        private const string MailFlag = "WizardObeliskLetterSent";
-        private bool _isConditionMet = false;
+        private const string MiniObeliskId = "(BC)238";
 
         public override void Entry(IModHelper helper)
         {
             Instance = this;
             Data = new ModData();
-            Config = helper.ReadConfig<ModConfig>();
 
             helper.Events.Content.AssetRequested += OnAssetRequested;
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
-            helper.Events.GameLoop.GameLaunched += OnGameLaunched;
-            helper.Events.GameLoop.DayStarted += OnDayStarted;
             helper.Events.Player.Warped += OnWarped;
             helper.Events.World.ObjectListChanged += OnObjectListChanged;
 
@@ -52,51 +36,18 @@ namespace ObeliskPairs
             harmony.PatchAll();
         }
 
-        private void OnGameLaunched(object sender, GameLaunchedEventArgs e)
-        {
-            var api = this.Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>("spacechase0.GenericModConfigMenu");
-            if (api != null)
-            {
-                api.Register(this.ModManifest, () => Config = new ModConfig(), () => this.Helper.WriteConfig(Config));
-
-                api.AddTextOption(this.ModManifest, () => Config.Mode.ToString(), value => Config.Mode = Enum.Parse<CraftMode>(value), () => "Modo de Craft", () => "On = Sempre, Off = Nunca, OnSe = Condicional", new[] { "On", "Off", "OnSe" });
-                api.AddTextOption(this.ModManifest, () => Config.RequiredArtifactId, value => Config.RequiredArtifactId = value, () => "ID do Artefato", () => "ID do artefato necessário para o modo OnSe (padrão: 74)");
-                api.AddTextOption(this.ModManifest, () => Config.CraftingIngredients, value => Config.CraftingIngredients = value, () => "Ingredientes do Craft", () => "IDs e Quantidades separados por espaço (ex: 334 1 335 1 336 1)");
-            }
-        }
-
         private void OnAssetRequested(object sender, AssetRequestedEventArgs e)
         {
+            // Substitui a receita original do jogo pela receita simples liberada desde o dia 1
             if (e.NameWithoutLocale.IsEquivalentTo("Data/CraftingRecipes"))
             {
                 e.Edit(asset =>
                 {
                     var data = asset.AsDictionary<string, string>().Data;
                     
-                    // Remove a receita original do jogo
-                    data.Remove("Mini-Obelisk");
-                    data.Remove("(BC)238");
-                    data.Remove("238");
-
-                    bool shouldAdd = false;
-                    if (Config.Mode == CraftMode.On) shouldAdd = true;
-                    else if (Config.Mode == CraftMode.OnSe && _isConditionMet) shouldAdd = true;
-
-                    if (shouldAdd)
-                    {
-                        // A MÁGICA: Saída é o ID sem o prefixo (BC). 
-                        // A categoria é "Home" (mesma da vanilla).
-                        // O "true" libera a receita imediatamente.
-                        data["Mini-Obelisk"] = $"{Config.CraftingIngredients}/Home/238/true/null/null";
-                    }
-                });
-            }
-            else if (e.NameWithoutLocale.IsEquivalentTo("Data/mail"))
-            {
-                e.Edit(asset =>
-                {
-                    var data = asset.AsDictionary<string, string>().Data;
-                    data["WizardObeliskLetter"] = "Prezado(a) @,^Sinto uma energia antiga despertar. Sua dedicação ao estudo dos artefatos e nossa amizade revelaram um segredo há muito esquecido.^Os antigos obeliscos podem ser conectados em pares, permitindo viagens instantâneas entre eles. Acredito que você está pronto para dominar essa arte.^Que a magia o guie.^- Mago";
+                    // A saída é "238" (sem BC), categoria "Home" (mesma da vanilla), e "true" (desbloqueado).
+                    // 334 = Barra de Cobre, 335 = Barra de Ferro, 336 = Barra de Ouro
+                    data["Mini-Obelisk"] = "334 1 335 1 336 1/Home/238/true/null/null";
                 });
             }
         }
@@ -105,45 +56,11 @@ namespace ObeliskPairs
         {
             Data = this.Helper.Data.ReadSaveData<ModData>("obelisk-data") ?? new ModData();
             ScanLocation(Game1.currentLocation);
-            UpdateConditions();
-            this.Helper.GameContent.InvalidateCache("Data/CraftingRecipes");
-        }
-
-        private void OnDayStarted(object sender, DayStartedEventArgs e)
-        {
-            UpdateConditions();
-            
-            if (Config.Mode == CraftMode.OnSe && _isConditionMet)
-            {
-                if (!Game1.player.mailReceived.Contains(MailFlag))
-                {
-                    Game1.addMailForTomorrow("WizardObeliskLetter");
-                    Game1.player.mailReceived.Add(MailFlag);
-                    this.Monitor.Log("Carta do Mago agendada para amanhã.", LogLevel.Info);
-                }
-            }
-            this.Helper.GameContent.InvalidateCache("Data/CraftingRecipes");
-        }
-
-        private void UpdateConditions()
-        {
-            if (Game1.player == null) { _isConditionMet = false; return; }
-            if (Game1.player.getFriendshipHeartLevelForNPC("Wizard") < 5) { _isConditionMet = false; return; }
-
-            var museum = Game1.getLocationFromName("ArchaeologyHouse");
-            if (museum == null) { _isConditionMet = false; return; }
-
-            string targetId = $"(O){Config.RequiredArtifactId}";
-            _isConditionMet = museum.Objects.Values.Any(obj => obj.QualifiedItemId == targetId);
         }
 
         private void OnWarped(object sender, WarpedEventArgs e) 
         { 
-            if (e.IsLocalPlayer) 
-            {
-                ScanLocation(e.NewLocation); 
-                UpdateConditions();
-            }
+            if (e.IsLocalPlayer) ScanLocation(e.NewLocation); 
         }
         
         private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e) 
@@ -155,17 +72,25 @@ namespace ObeliskPairs
         {
             if (loc == null) return;
             bool changed = false;
-            var obelisks = loc.Objects.Pairs.Where(p => IsMiniObelisk(p.Value)).OrderBy(p => p.Key.Y).ThenBy(p => p.Key.X).ToList();
+            var obelisks = loc.Objects.Pairs
+                .Where(p => IsMiniObelisk(p.Value))
+                .OrderBy(p => p.Key.Y)
+                .ThenBy(p => p.Key.X)
+                .ToList();
+
             foreach (var obj in obelisks)
             {
                 string key = $"{loc.NameOrUniqueName}|{(int)obj.Key.X}|{(int)obj.Key.Y}";
                 if (!Data.Pairs.ContainsKey(key) && !Data.Unpaired.Contains(key)) { if (RegisterNew(key, false)) changed = true; }
             }
+            
+            // Limpa a memória de obeliscos que foram quebrados
             var currentKeys = obelisks.Select(o => $"{loc.NameOrUniqueName}|{(int)o.Key.X}|{(int)o.Key.Y}").ToHashSet();
             var deadKeys = Data.Unpaired.Where(k => k.StartsWith(loc.NameOrUniqueName + "|") && !currentKeys.Contains(k)).ToList();
             foreach (var k in deadKeys) { Data.Unpaired.Remove(k); changed = true; }
             var deadPairs = Data.Pairs.Keys.Where(k => k.StartsWith(loc.NameOrUniqueName + "|") && !currentKeys.Contains(k)).ToList();
             foreach (var k in deadPairs) { Unregister(k); changed = true; }
+            
             if (changed) this.Helper.Data.WriteSaveData("obelisk-data", Data);
         }
 
@@ -221,12 +146,13 @@ namespace ObeliskPairs
         internal bool IsMiniObelisk(StardewValley.Object obj) => obj != null && (obj.QualifiedItemId == MiniObeliskId || obj.ItemId == "238");
     }
 
+    // --- PATCH 1: Permite colocar em qualquer lugar ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {
         static void Postfix(GameLocation location, Item item, int x, int y, Farmer f, ref bool __result)
         {
-            if (!__result && item?.QualifiedItemId == ModEntry.MiniObeliskId)
+            if (!__result && item?.QualifiedItemId == "(BC)238")
             {
                 Vector2 tile = new Vector2(x / 64, y / 64);
                 if (!location.Objects.ContainsKey(tile) && !location.isWaterTile((int)tile.X, (int)tile.Y)) __result = true;
@@ -234,18 +160,19 @@ namespace ObeliskPairs
         }
     }
 
+    // --- PATCH 2: Remove o limite de 2 obeliscos ---
     [HarmonyPatch(typeof(StardewValley.Object), nameof(StardewValley.Object.placementAction))]
     public static class MiniObeliskLimitPatch
     {
         static bool Prefix(StardewValley.Object __instance, GameLocation location, int x, int y, Farmer who, ref bool __result)
         {
-            if (__instance.QualifiedItemId == ModEntry.MiniObeliskId)
+            if (__instance.QualifiedItemId == "(BC)238")
             {
                 Vector2 tile = new Vector2(x / 64, y / 64);
                 if (location.Objects.ContainsKey(tile)) { __result = false; return false; }
 
                 int count = 0;
-                foreach (var loc in Game1.locations) count += loc.Objects.Pairs.Count(p => p.Value.QualifiedItemId == ModEntry.MiniObeliskId);
+                foreach (var loc in Game1.locations) count += loc.Objects.Pairs.Count(p => p.Value.QualifiedItemId == "(BC)238");
 
                 if (count >= 2)
                 {
@@ -266,6 +193,7 @@ namespace ObeliskPairs
         }
     }
 
+    // --- PATCH 3: Interação (Teleporte) ---
     [HarmonyPatch]
     public static class CheckActionPatch
     {

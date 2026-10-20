@@ -16,7 +16,7 @@ namespace ObeliskPairs
     {
         public CraftMode Mode { get; set; } = CraftMode.On;
         public string RequiredArtifactId { get; set; } = "74";
-        public string CraftingIngredients { get; set; } = "334 1 335 1 336 1";
+        public string CraftingIngredients { get; set; } = "334 1 335 1 336 1"; // 1 Cobre, 1 Ferro, 1 Ouro
     }
 
     public class ModData
@@ -67,14 +67,13 @@ namespace ObeliskPairs
 
         private void OnAssetRequested(object sender, AssetRequestedEventArgs e)
         {
-            // MODIFICA APENAS A RECEITA ORIGINAL DO MINI-OBELISCO
             if (e.NameWithoutLocale.IsEquivalentTo("Data/CraftingRecipes"))
             {
                 e.Edit(asset =>
                 {
                     var data = asset.AsDictionary<string, string>().Data;
                     
-                    // Remove a receita original de todas as formas possíveis
+                    // Remove a receita original do jogo
                     data.Remove("Mini-Obelisk");
                     data.Remove("(BC)238");
                     data.Remove("238");
@@ -85,9 +84,10 @@ namespace ObeliskPairs
 
                     if (shouldAdd)
                     {
-                        // Recria a receita do MESMO item (Mini-Obelisk = 238), com os ingredientes configurados
-                        // A saída é "(BC)238" que é o ID qualificado do Mini-Obelisco original
-                        data["Mini-Obelisk"] = $"{Config.CraftingIngredients}/Home/(BC)238/true/null/null";
+                        // A MÁGICA: Saída é o ID sem o prefixo (BC). 
+                        // A categoria é "Home" (mesma da vanilla).
+                        // O "true" libera a receita imediatamente.
+                        data["Mini-Obelisk"] = $"{Config.CraftingIngredients}/Home/238/true/null/null";
                     }
                 });
             }

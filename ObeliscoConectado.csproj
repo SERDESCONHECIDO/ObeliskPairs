@@ -24,5 +24,9 @@
     <Reference Include="SMAPI.Toolkit.CoreInterfaces">
       <HintPath>$(HOME)/StardewValley/smapi-internal/SMAPI.Toolkit.CoreInterfaces.dll</HintPath>
     </Reference>
+    <!-- AQUI ESTAVA O ERRO: Faltava a referência ao xTile -->
+    <Reference Include="xTile">
+      <HintPath>$(HOME)/StardewValley/xTile.dll</HintPath>
+    </Reference>
   </ItemGroup>
 </Project>

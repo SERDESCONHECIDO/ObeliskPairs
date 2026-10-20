@@ -15,8 +15,8 @@ namespace ObeliscoConectado
     public class ModConfig
     {
         public CraftMode Mode { get; set; } = CraftMode.On;
-        public string RequiredArtifactId { get; set; } = "74"; // Fragmento Prismático
-        public string CraftingIngredients { get; set; } = "334 1 335 1 336 1"; // 1 Cobre, 1 Ferro, 1 Ouro
+        public string RequiredArtifactId { get; set; } = "74";
+        public string CraftingIngredients { get; set; } = "334 1 335 1 336 1";
     }
 
     public class ModData
@@ -39,7 +39,7 @@ namespace ObeliscoConectado
         {
             Instance = this;
             Data = new ModData();
-            Config = helper.ReadConfig<ModConfig>();
+            Config = new ModConfig(); // Padrão inicial (não lê arquivo)
 
             helper.Events.Content.AssetRequested += OnAssetRequested;
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
@@ -57,7 +57,12 @@ namespace ObeliscoConectado
             var api = this.Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>("spacechase0.GenericModConfigMenu");
             if (api != null)
             {
-                api.Register(this.ModManifest, () => Config = new ModConfig(), () => this.Helper.WriteConfig(Config));
+                // O menu agora salva DENTRO do save, sem precisar de config.json
+                api.Register(this.ModManifest, 
+                    () => { Config = new ModConfig(); this.Helper.Data.WriteSaveData("ObeliskConfig", Config); }, 
+                    () => { this.Helper.Data.WriteSaveData("ObeliskConfig", Config); this.Helper.GameContent.InvalidateCache("Data/CraftingRecipes"); }
+                );
+
                 api.AddTextOption(this.ModManifest, () => Config.Mode.ToString(), value => Config.Mode = Enum.Parse<CraftMode>(value), () => "Modo de Craft", () => "On = Sempre, Off = Nunca, OnSe = Condicional", new[] { "On", "Off", "OnSe" });
                 api.AddTextOption(this.ModManifest, () => Config.RequiredArtifactId, value => Config.RequiredArtifactId = value, () => "ID do Artefato", () => "ID do artefato necessário para o modo OnSe (padrão: 74)");
                 api.AddTextOption(this.ModManifest, () => Config.CraftingIngredients, value => Config.CraftingIngredients = value, () => "Ingredientes do Craft", () => "IDs e Quantidades separados por espaço (ex: 334 1 335 1 336 1)");
@@ -80,8 +85,6 @@ namespace ObeliscoConectado
                 e.Edit(asset =>
                 {
                     var data = asset.AsDictionary<string, string>().Data;
-                    
-                    // Remove a receita original para evitar duplicidade
                     data.Remove("Mini-Obelisk");
 
                     bool shouldAdd = false;
@@ -90,8 +93,6 @@ namespace ObeliscoConectado
 
                     if (shouldAdd)
                     {
-                        // A MÁGICA DA PRENSA DE COBRE APLICADA AQUI:
-                        // Usamos uma chave nova, e a saída é o ID "238" (sem BC). A condição é "default".
                         data["ObeliscoConectado_Receita"] = $"{Config.CraftingIngredients}/Home/238/true/default/Obelisco Conectado";
                     }
                 });
@@ -100,6 +101,9 @@ namespace ObeliscoConectado
 
         private void OnSaveLoaded(object sender, SaveLoadedEventArgs e)
         {
+            // Carrega as configurações de DENTRO do save, e não de um arquivo externo
+            Config = this.Helper.Data.ReadSaveData<ModConfig>("ObeliskConfig") ?? new ModConfig();
+            
             Data = this.Helper.Data.ReadSaveData<ModData>("obelisk-data") ?? new ModData();
             ScanLocation(Game1.currentLocation);
             UpdateConditions();
@@ -119,18 +123,14 @@ namespace ObeliscoConectado
                     this.Monitor.Log("Carta do Mago agendada para amanhã.", LogLevel.Info);
                 }
             }
-            // Força a atualização do menu de craft caso a condição tenha mudado
             this.Helper.GameContent.InvalidateCache("Data/CraftingRecipes");
         }
 
         private void UpdateConditions()
         {
             if (Game1.player == null) { _isConditionMet = false; return; }
-            
-            // 1. Ter 5 corações com o Mago
             if (Game1.player.getFriendshipHeartLevelForNPC("Wizard") < 5) { _isConditionMet = false; return; }
 
-            // 2. Ter doado o artefato específico
             var museum = Game1.getLocationFromName("ArchaeologyHouse");
             if (museum == null) { _isConditionMet = false; return; }
 
@@ -138,7 +138,6 @@ namespace ObeliscoConectado
             _isConditionMet = museum.Objects.Values.Any(obj => obj.QualifiedItemId == targetId);
         }
 
-        // --- LÓGICA DE TELEPORTE EM PARES ---
         private void OnWarped(object sender, WarpedEventArgs e) { if (e.IsLocalPlayer) ScanLocation(e.NewLocation); }
         private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e) { if (e.Removed.Any(r => IsMiniObelisk(r.Value))) ScanLocation(e.Location); }
 
@@ -206,7 +205,6 @@ namespace ObeliscoConectado
         internal bool IsMiniObelisk(StardewValley.Object obj) => obj != null && (obj.QualifiedItemId == MiniObeliskId || obj.ItemId == "238");
     }
 
-    // --- PATCHES HARMONY ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {

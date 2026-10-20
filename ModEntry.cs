@@ -40,7 +40,7 @@ namespace ObeliscoConectado
             Instance = this;
             Data = new ModData();
             
-            // Lê o config.json que já vem no zip (sem precisar criar do zero)
+            // Lê o config.json que já vem no zip
             Config = this.Helper.ReadConfig<ModConfig>();
 
             helper.Events.Content.AssetRequested += OnAssetRequested;
@@ -56,14 +56,45 @@ namespace ObeliscoConectado
 
         private void OnGameLaunched(object sender, GameLaunchedEventArgs e)
         {
+            // Tenta pegar a API do GMCM
             var api = this.Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>("spacechase0.GenericModConfigMenu");
+            
             if (api != null)
             {
-                api.Register(this.ModManifest, () => Config = new ModConfig(), () => this.Helper.WriteConfig(Config));
+                // Registra o mod no GMCM
+                api.Register(
+                    mod: this.ModManifest,
+                    reset: () => Config = new ModConfig(),
+                    save: () => this.Helper.WriteConfig(Config)
+                );
 
-                api.AddTextOption(this.ModManifest, () => Config.Mode.ToString(), value => Config.Mode = Enum.Parse<CraftMode>(value), () => "Modo de Craft", () => "On = Sempre, Off = Nunca, OnSe = Condicional", new[] { "On", "Off", "OnSe" });
-                api.AddTextOption(this.ModManifest, () => Config.RequiredArtifactId, value => Config.RequiredArtifactId = value, () => "ID do Artefato", () => "ID do artefato necessário (padrão: 74)");
-                api.AddTextOption(this.ModManifest, () => Config.CraftingIngredients, value => Config.CraftingIngredients = value, () => "Ingredientes do Craft", () => "IDs e Quantidades separados por espaço");
+                // Cria a aba de escolha para o Modo (On, Off, OnSe)
+                api.AddTextOption(
+                    mod: this.ModManifest,
+                    getValue: () => Config.Mode.ToString(),
+                    setValue: value => Config.Mode = Enum.Parse<CraftMode>(value),
+                    name: () => "Modo de Craft",
+                    tooltip: () => "On = Sempre, Off = Nunca, OnSe = Condicional",
+                    allowedValues: new[] { "On", "Off", "OnSe" }
+                );
+
+                // Cria a caixa de texto para o ID do Artefato
+                api.AddTextOption(
+                    mod: this.ModManifest,
+                    getValue: () => Config.RequiredArtifactId,
+                    setValue: value => Config.RequiredArtifactId = value,
+                    name: () => "ID do Artefato",
+                    tooltip: () => "ID do artefato necessário (padrão: 74)"
+                );
+
+                // Cria a caixa de texto para os Ingredientes
+                api.AddTextOption(
+                    mod: this.ModManifest,
+                    getValue: () => Config.CraftingIngredients,
+                    setValue: value => Config.CraftingIngredients = value,
+                    name: () => "Ingredientes do Craft",
+                    tooltip: () => "IDs e Quantidades separados por espaço"
+                );
             }
         }
 

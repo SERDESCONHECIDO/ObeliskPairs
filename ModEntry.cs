@@ -39,7 +39,9 @@ namespace ObeliscoConectado
         {
             Instance = this;
             Data = new ModData();
-            Config = new ModConfig(); // Padrão inicial (não lê arquivo)
+            
+            // Lê o config.json que já vem no zip (sem precisar criar do zero)
+            Config = this.Helper.ReadConfig<ModConfig>();
 
             helper.Events.Content.AssetRequested += OnAssetRequested;
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
@@ -57,15 +59,11 @@ namespace ObeliscoConectado
             var api = this.Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>("spacechase0.GenericModConfigMenu");
             if (api != null)
             {
-                // O menu agora salva DENTRO do save, sem precisar de config.json
-                api.Register(this.ModManifest, 
-                    () => { Config = new ModConfig(); this.Helper.Data.WriteSaveData("ObeliskConfig", Config); }, 
-                    () => { this.Helper.Data.WriteSaveData("ObeliskConfig", Config); this.Helper.GameContent.InvalidateCache("Data/CraftingRecipes"); }
-                );
+                api.Register(this.ModManifest, () => Config = new ModConfig(), () => this.Helper.WriteConfig(Config));
 
                 api.AddTextOption(this.ModManifest, () => Config.Mode.ToString(), value => Config.Mode = Enum.Parse<CraftMode>(value), () => "Modo de Craft", () => "On = Sempre, Off = Nunca, OnSe = Condicional", new[] { "On", "Off", "OnSe" });
-                api.AddTextOption(this.ModManifest, () => Config.RequiredArtifactId, value => Config.RequiredArtifactId = value, () => "ID do Artefato", () => "ID do artefato necessário para o modo OnSe (padrão: 74)");
-                api.AddTextOption(this.ModManifest, () => Config.CraftingIngredients, value => Config.CraftingIngredients = value, () => "Ingredientes do Craft", () => "IDs e Quantidades separados por espaço (ex: 334 1 335 1 336 1)");
+                api.AddTextOption(this.ModManifest, () => Config.RequiredArtifactId, value => Config.RequiredArtifactId = value, () => "ID do Artefato", () => "ID do artefato necessário (padrão: 74)");
+                api.AddTextOption(this.ModManifest, () => Config.CraftingIngredients, value => Config.CraftingIngredients = value, () => "Ingredientes do Craft", () => "IDs e Quantidades separados por espaço");
             }
         }
 
@@ -101,9 +99,6 @@ namespace ObeliscoConectado
 
         private void OnSaveLoaded(object sender, SaveLoadedEventArgs e)
         {
-            // Carrega as configurações de DENTRO do save, e não de um arquivo externo
-            Config = this.Helper.Data.ReadSaveData<ModConfig>("ObeliskConfig") ?? new ModConfig();
-            
             Data = this.Helper.Data.ReadSaveData<ModData>("obelisk-data") ?? new ModData();
             ScanLocation(Game1.currentLocation);
             UpdateConditions();
@@ -113,14 +108,12 @@ namespace ObeliscoConectado
         private void OnDayStarted(object sender, DayStartedEventArgs e)
         {
             UpdateConditions();
-            
             if (Config.Mode == CraftMode.OnSe && _isConditionMet)
             {
                 if (!Game1.player.mailReceived.Contains(MailFlag))
                 {
                     Game1.addMailForTomorrow("WizardObeliskLetter");
                     Game1.player.mailReceived.Add(MailFlag);
-                    this.Monitor.Log("Carta do Mago agendada para amanhã.", LogLevel.Info);
                 }
             }
             this.Helper.GameContent.InvalidateCache("Data/CraftingRecipes");
@@ -138,6 +131,7 @@ namespace ObeliscoConectado
             _isConditionMet = museum.Objects.Values.Any(obj => obj.QualifiedItemId == targetId);
         }
 
+        // --- LÓGICA DE TELEPORTE EM PARES ---
         private void OnWarped(object sender, WarpedEventArgs e) { if (e.IsLocalPlayer) ScanLocation(e.NewLocation); }
         private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e) { if (e.Removed.Any(r => IsMiniObelisk(r.Value))) ScanLocation(e.Location); }
 
@@ -205,6 +199,7 @@ namespace ObeliscoConectado
         internal bool IsMiniObelisk(StardewValley.Object obj) => obj != null && (obj.QualifiedItemId == MiniObeliskId || obj.ItemId == "238");
     }
 
+    // --- PATCHES HARMONY ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {

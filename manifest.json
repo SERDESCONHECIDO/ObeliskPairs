@@ -1,9 +1,9 @@
 {
-  "Name": "Obelisk Pairs",
+  "Name": "Obelisco Conectado",
   "Author": "SeuNome",
   "Version": "1.0.0",
-  "Description": "Adiciona obeliscos que se conectam em pares ilimitados. Clique para viajar.",
-  "UniqueID": "SeuNome.ObeliskPairs",
-  "EntryDll": "ObeliskPairs.dll",
+  "Description": "Adiciona obeliscos conectados em pares com opcoes de desbloqueio e carta do mago.",
+  "UniqueID": "SeuNome.ObeliscoConectado",
+  "EntryDll": "ObeliscoConectado.dll",
   "MinimumApiVersion": "4.0.0"
 }

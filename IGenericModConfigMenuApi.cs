@@ -1,7 +1,7 @@
 using System;
 using StardewModdingAPI;
 
-namespace ObeliskPairs
+namespace ObeliscoConectado
 {
     public interface IGenericModConfigMenuApi
     {

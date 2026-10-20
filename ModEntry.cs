@@ -5,7 +5,7 @@ using HarmonyLib;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
-using StardewValley.Locations; // Adicionado para usar o LibraryMuseum
+using StardewValley.Locations;
 using Microsoft.Xna.Framework;
 using xTile.Dimensions;
 
@@ -92,7 +92,6 @@ namespace ObeliscoConectado
                     }
                     else
                     {
-                        // Se não for pra aparecer, deleta a receita do dicionário do jogo
                         data.Remove("Mini-Obelisk");
                     }
                 });
@@ -105,7 +104,6 @@ namespace ObeliscoConectado
             ScanLocation(Game1.currentLocation);
             UpdateConditions();
             
-            // CORREÇÃO DA TOCHA: Remove a receita da memória do jogador se não for pra aparecer
             if (Config.Mode == CraftMode.Off || (Config.Mode == CraftMode.OnSe && !_isConditionMet))
             {
                 Game1.player.craftingRecipes.Remove("Mini-Obelisk");
@@ -127,7 +125,6 @@ namespace ObeliscoConectado
                 }
             }
             
-            // CORREÇÃO DA TOCHA: Garante que a receita não fique presa na memória se estiver Off
             if (Config.Mode == CraftMode.Off || (Config.Mode == CraftMode.OnSe && !_isConditionMet))
             {
                 Game1.player.craftingRecipes.Remove("Mini-Obelisk");
@@ -140,25 +137,22 @@ namespace ObeliscoConectado
         {
             if (Game1.player == null) { _isConditionMet = false; return; }
             
-            // 1. 5 Corações com o Mago
             if (Game1.player.getFriendshipHeartLevelForNPC("Wizard") < 5) { _isConditionMet = false; return; }
 
-            // 2. CORREÇÃO DO MUSEU 1.6: Verifica na classe LibraryMuseum
             bool donated = false;
             if (Game1.getLocationFromName("ArchaeologyHouse") is LibraryMuseum museum)
             {
                 string targetId = Config.RequiredArtifactId;
                 string qualifiedTargetId = $"(O){targetId}";
                 
-                // O dicionário museumPieces guarda a posição (int) e o ID do item (string)
-                donated = museum.museumPieces.Values.Any(v => v.Value == targetId || v.Value == qualifiedTargetId);
+                // CORREÇÃO DO ERRO AQUI: Removido o .Value da variável v
+                donated = museum.museumPieces.Values.Any(v => v == targetId || v == qualifiedTargetId);
             }
 
             _isConditionMet = donated;
             this.Monitor.Log($"OnSe - 5 Corações: OK | Artefato ({Config.RequiredArtifactId}) Doado: {donated} | Condição Final: {_isConditionMet}", LogLevel.Info);
         }
 
-        // --- LÓGICA DE TELEPORTE EM PARES ---
         private void OnWarped(object sender, WarpedEventArgs e) { if (e.IsLocalPlayer) ScanLocation(e.NewLocation); }
         private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e) { if (e.Removed.Any(r => IsMiniObelisk(r.Value))) ScanLocation(e.Location); }
 
@@ -226,7 +220,6 @@ namespace ObeliscoConectado
         internal bool IsMiniObelisk(StardewValley.Object obj) => obj != null && (obj.QualifiedItemId == MiniObeliskId || obj.ItemId == "238");
     }
 
-    // --- PATCHES HARMONY ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {

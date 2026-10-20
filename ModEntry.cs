@@ -5,6 +5,7 @@ using HarmonyLib;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
+using StardewValley.Locations; // Adicionado para usar o LibraryMuseum
 using Microsoft.Xna.Framework;
 using xTile.Dimensions;
 
@@ -142,27 +143,15 @@ namespace ObeliscoConectado
             // 1. 5 Corações com o Mago
             if (Game1.player.getFriendshipHeartLevelForNPC("Wizard") < 5) { _isConditionMet = false; return; }
 
-            // 2. CORREÇÃO DO MUSEU 1.6: Verifica na lista museumPieces
+            // 2. CORREÇÃO DO MUSEU 1.6: Verifica na classe LibraryMuseum
             bool donated = false;
-            try
+            if (Game1.getLocationFromName("ArchaeologyHouse") is LibraryMuseum museum)
             {
-                // Na 1.6, museumPieces é um dicionário que guarda os IDs dos itens doados
-                if (Game1.player.museumPieces.ContainsKey(Config.RequiredArtifactId) || 
-                    Game1.player.museumPieces.ContainsValue(Config.RequiredArtifactId) ||
-                    Game1.player.museumPieces.ContainsValue($"(O){Config.RequiredArtifactId}"))
-                {
-                    donated = true;
-                }
-            }
-            catch
-            {
-                // Fallback caso a API do museu mude
-                var museum = Game1.getLocationFromName("ArchaeologyHouse");
-                if (museum != null)
-                {
-                    string targetId = $"(O){Config.RequiredArtifactId}";
-                    donated = museum.Objects.Values.Any(obj => obj.QualifiedItemId == targetId);
-                }
+                string targetId = Config.RequiredArtifactId;
+                string qualifiedTargetId = $"(O){targetId}";
+                
+                // O dicionário museumPieces guarda a posição (int) e o ID do item (string)
+                donated = museum.museumPieces.Values.Any(v => v.Value == targetId || v.Value == qualifiedTargetId);
             }
 
             _isConditionMet = donated;

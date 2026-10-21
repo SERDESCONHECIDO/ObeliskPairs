@@ -82,6 +82,11 @@ namespace ObeliscoConectado
                 {
                     var data = asset.AsDictionary<string, string>().Data;
                     
+                    // Limpa a receita vanilla do jogo
+                    data.Remove("Mini-Obelisk");
+                    data.Remove("(BC)238");
+                    data.Remove("238");
+
                     bool shouldAdd = false;
                     if (Config.Mode == CraftMode.On) shouldAdd = true;
                     else if (Config.Mode == CraftMode.OnSe && _isConditionMet) shouldAdd = true;
@@ -89,10 +94,6 @@ namespace ObeliscoConectado
                     if (shouldAdd)
                     {
                         data["Mini-Obelisk"] = $"{Config.CraftingIngredients}/Home/238/true/default/Obelisco Conectado";
-                    }
-                    else
-                    {
-                        data.Remove("Mini-Obelisk");
                     }
                 });
             }
@@ -107,6 +108,8 @@ namespace ObeliscoConectado
             if (Config.Mode == CraftMode.Off || (Config.Mode == CraftMode.OnSe && !_isConditionMet))
             {
                 Game1.player.craftingRecipes.Remove("Mini-Obelisk");
+                Game1.player.craftingRecipes.Remove("(BC)238");
+                Game1.player.craftingRecipes.Remove("238");
             }
 
             this.Helper.GameContent.InvalidateCache("Data/CraftingRecipes");
@@ -128,6 +131,8 @@ namespace ObeliscoConectado
             if (Config.Mode == CraftMode.Off || (Config.Mode == CraftMode.OnSe && !_isConditionMet))
             {
                 Game1.player.craftingRecipes.Remove("Mini-Obelisk");
+                Game1.player.craftingRecipes.Remove("(BC)238");
+                Game1.player.craftingRecipes.Remove("238");
             }
 
             this.Helper.GameContent.InvalidateCache("Data/CraftingRecipes");
@@ -145,7 +150,6 @@ namespace ObeliscoConectado
                 string targetId = Config.RequiredArtifactId;
                 string qualifiedTargetId = $"(O){targetId}";
                 
-                // CORREÇÃO DO ERRO AQUI: Removido o .Value da variável v
                 donated = museum.museumPieces.Values.Any(v => v == targetId || v == qualifiedTargetId);
             }
 
@@ -153,8 +157,15 @@ namespace ObeliscoConectado
             this.Monitor.Log($"OnSe - 5 Corações: OK | Artefato ({Config.RequiredArtifactId}) Doado: {donated} | Condição Final: {_isConditionMet}", LogLevel.Info);
         }
 
-        private void OnWarped(object sender, WarpedEventArgs e) { if (e.IsLocalPlayer) ScanLocation(e.NewLocation); }
-        private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e) { if (e.Removed.Any(r => IsMiniObelisk(r.Value))) ScanLocation(e.Location); }
+        private void OnWarped(object sender, WarpedEventArgs e) 
+        { 
+            if (e.IsLocalPlayer) ScanLocation(e.NewLocation); 
+        }
+        
+        private void OnObjectListChanged(object sender, ObjectListChangedEventArgs e) 
+        { 
+            if (e.Removed.Any(r => IsMiniObelisk(r.Value))) ScanLocation(e.Location); 
+        }
 
         public void ScanLocation(GameLocation loc)
         {
@@ -207,19 +218,59 @@ namespace ObeliscoConectado
             {
                 var parts = targetKey.Split('|');
                 GameLocation loc = Game1.getLocationFromName(parts[0]);
-                int x = int.Parse(parts[1]); int y = int.Parse(parts[2]);
-                if (loc != null && loc.Objects.TryGetValue(new Vector2(x, y), out var targetObj) && IsMiniObelisk(targetObj))
+                int x = int.Parse(parts[1]); 
+                int y = int.Parse(parts[2]);
+                Vector2 targetTile = new Vector2(x, y);
+
+                if (loc != null && loc.Objects.TryGetValue(targetTile, out var targetObj) && IsMiniObelisk(targetObj))
                 {
-                    Game1.warpFarmer(parts[0], x, y + 1, 2);
-                    Game1.showGlobalMessage("Teleportado!"); return;
+                    Vector2? safeTile = FindSafeWarpPosition(loc, targetTile);
+                    
+                    if (safeTile.HasValue)
+                    {
+                        Game1.warpFarmer(parts[0], (int)safeTile.Value.X, (int)safeTile.Value.Y, 2);
+                        Game1.showGlobalMessage("Teleportado!");
+                    }
+                    else
+                    {
+                        Game1.showRedMessage("Não há espaço livre ao redor deste obelisco para o teleporte!");
+                    }
+                    return;
                 }
             }
             Game1.showRedMessage("Este Mini-Obelisco não está conectado a nenhum outro.");
         }
 
+        // NOVO MÉTODO: Encontra um tile livre ao redor do obelisco para evitar o limbo
+        private Vector2? FindSafeWarpPosition(GameLocation loc, Vector2 baseTile)
+        {
+            // O obelisco ocupa 1x2 tiles (baseTile e baseTile.Y - 1)
+            // Testa: Baixo, Esquerda, Direita e Acima (já que o obelisco tem 2 de altura)
+            Vector2[] candidates = new Vector2[]
+            {
+                baseTile + new Vector2(0, 1),   // Casinha de baixo (padrão)
+                baseTile + new Vector2(-1, 0),  // Esquerda
+                baseTile + new Vector2(1, 0),   // Direita
+                baseTile + new Vector2(0, -2)   // Acima (já que o obelisco tem 2 de altura)
+            };
+
+            foreach (var pos in candidates)
+            {
+                // Verifica se está dentro do mapa, se é passável (sem paredes/água) e se não tem objetos
+                if (loc.isTilePassable(new xTile.Dimensions.Location((int)pos.X, (int)pos.Y, loc.Map.DisplayWidth, loc.Map.DisplayHeight), Game1.player) 
+                    && !loc.Objects.ContainsKey(pos) 
+                    && !loc.isWaterTile((int)pos.X, (int)pos.Y))
+                {
+                    return pos;
+                }
+            }
+            return null; 
+        }
+
         internal bool IsMiniObelisk(StardewValley.Object obj) => obj != null && (obj.QualifiedItemId == MiniObeliskId || obj.ItemId == "238");
     }
 
+    // --- PATCHES HARMONY ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {

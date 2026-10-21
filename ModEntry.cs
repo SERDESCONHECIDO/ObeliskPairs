@@ -241,23 +241,20 @@ namespace ObeliscoConectado
             Game1.showRedMessage("Este Mini-Obelisco não está conectado a nenhum outro.");
         }
 
-        // NOVO MÉTODO: Encontra um tile livre ao redor do obelisco para evitar o limbo
         private Vector2? FindSafeWarpPosition(GameLocation loc, Vector2 baseTile)
         {
-            // O obelisco ocupa 1x2 tiles (baseTile e baseTile.Y - 1)
-            // Testa: Baixo, Esquerda, Direita e Acima (já que o obelisco tem 2 de altura)
             Vector2[] candidates = new Vector2[]
             {
-                baseTile + new Vector2(0, 1),   // Casinha de baixo (padrão)
-                baseTile + new Vector2(-1, 0),  // Esquerda
-                baseTile + new Vector2(1, 0),   // Direita
-                baseTile + new Vector2(0, -2)   // Acima (já que o obelisco tem 2 de altura)
+                baseTile + new Vector2(0, 1),   
+                baseTile + new Vector2(-1, 0),  
+                baseTile + new Vector2(1, 0),   
+                baseTile + new Vector2(0, -2)   
             };
 
             foreach (var pos in candidates)
             {
-                // Verifica se está dentro do mapa, se é passável (sem paredes/água) e se não tem objetos
-                if (loc.isTilePassable(new xTile.Dimensions.Location((int)pos.X, (int)pos.Y, loc.Map.DisplayWidth, loc.Map.DisplayHeight), Game1.player) 
+                // CORREÇÃO AQUI: Location agora recebe apenas X e Y
+                if (loc.isTilePassable(new xTile.Dimensions.Location((int)pos.X, (int)pos.Y), Game1.player) 
                     && !loc.Objects.ContainsKey(pos) 
                     && !loc.isWaterTile((int)pos.X, (int)pos.Y))
                 {
@@ -270,7 +267,6 @@ namespace ObeliscoConectado
         internal bool IsMiniObelisk(StardewValley.Object obj) => obj != null && (obj.QualifiedItemId == MiniObeliskId || obj.ItemId == "238");
     }
 
-    // --- PATCHES HARMONY ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {

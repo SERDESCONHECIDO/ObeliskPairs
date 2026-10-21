@@ -82,7 +82,6 @@ namespace ObeliscoConectado
                 {
                     var data = asset.AsDictionary<string, string>().Data;
                     
-                    // Limpa a receita vanilla do jogo
                     data.Remove("Mini-Obelisk");
                     data.Remove("(BC)238");
                     data.Remove("238");
@@ -253,8 +252,8 @@ namespace ObeliscoConectado
 
             foreach (var pos in candidates)
             {
-                // CORREÇÃO AQUI: Location agora recebe apenas X e Y
-                if (loc.isTilePassable(new xTile.Dimensions.Location((int)pos.X, (int)pos.Y), Game1.player) 
+                // CORREÇÃO AQUI: A 1.6 exige um Rectangle (viewport), não o Farmer
+                if (loc.isTilePassable(new xTile.Dimensions.Location((int)pos.X, (int)pos.Y), Game1.viewport) 
                     && !loc.Objects.ContainsKey(pos) 
                     && !loc.isWaterTile((int)pos.X, (int)pos.Y))
                 {
@@ -267,6 +266,7 @@ namespace ObeliscoConectado
         internal bool IsMiniObelisk(StardewValley.Object obj) => obj != null && (obj.QualifiedItemId == MiniObeliskId || obj.ItemId == "238");
     }
 
+    // --- PATCHES HARMONY ---
     [HarmonyPatch(typeof(Utility), nameof(Utility.playerCanPlaceItemHere))]
     public static class PlacementOutsideFarmPatch
     {

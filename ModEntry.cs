@@ -17,7 +17,6 @@ namespace ObeliscoConectado
     {
         public CraftMode Mode { get; set; } = CraftMode.On;
         public string RequiredArtifactId { get; set; } = "74";
-        // AQUI ESTÁ A NOVA RECEITA: 10 Madeiras de Lei, 1 Barra de Ouro, 1 Topázio
         public string CraftingIngredients { get; set; } = "709 10 336 1 68 1"; 
     }
 
@@ -67,7 +66,11 @@ namespace ObeliscoConectado
             if (loc.Objects.ContainsKey(tile) || loc.Objects.ContainsKey(topTile)) return false;
             if (loc.IsTileOccupiedBy(tile) || loc.IsTileOccupiedBy(topTile)) return false; 
             
-            if (loc.terrainFeatures.TryGetValue(tile, out var featureBase) || loc.terrainFeatures.TryGetValue(topTile, out var featureTop))
+            // CORREÇÃO DO ERRO CS0165 AQUI
+            loc.terrainFeatures.TryGetValue(tile, out var featureBase);
+            loc.terrainFeatures.TryGetValue(topTile, out var featureTop);
+
+            if (featureBase != null || featureTop != null)
             {
                 var feature = featureBase ?? featureTop;
                 if (feature is not StardewValley.TerrainFeatures.HoeDirt dirt || dirt.crop != null)
@@ -93,7 +96,8 @@ namespace ObeliscoConectado
             if (loc.Objects.ContainsKey(tile)) return false;
             if (loc.IsTileOccupiedBy(tile)) return false;
             
-            if (loc.terrainFeatures.TryGetValue(tile, out var feature) && feature is not StardewValley.TerrainFeatures.HoeDirt)
+            loc.terrainFeatures.TryGetValue(tile, out var feature);
+            if (feature != null && feature is not StardewValley.TerrainFeatures.HoeDirt)
                 return false;
 
             var viewportRect = new xTile.Dimensions.Rectangle(Game1.viewport.X, Game1.viewport.Y, Game1.viewport.Width, Game1.viewport.Height);

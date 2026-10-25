@@ -17,7 +17,8 @@ namespace ObeliscoConectado
     {
         public CraftMode Mode { get; set; } = CraftMode.On;
         public string RequiredArtifactId { get; set; } = "74";
-        public string CraftingIngredients { get; set; } = "334 1 335 1 336 1";
+        // AQUI ESTÁ A NOVA RECEITA: 10 Madeiras de Lei, 1 Barra de Ouro, 1 Topázio
+        public string CraftingIngredients { get; set; } = "709 10 336 1 68 1"; 
     }
 
     public class ModData
@@ -51,6 +52,55 @@ namespace ObeliscoConectado
 
             var harmony = new Harmony(this.ModManifest.UniqueID);
             harmony.PatchAll();
+        }
+
+        public static bool IsTileValidForObelisk(GameLocation loc, Vector2 tile)
+        {
+            if (loc == null) return false;
+            
+            Vector2 topTile = tile - new Vector2(0, 1);
+
+            if (tile.X < 0 || tile.Y < 1 || topTile.Y < 0 || tile.X >= loc.Map.Layers[0].LayerWidth || tile.Y >= loc.Map.Layers[0].LayerHeight) 
+                return false;
+
+            if (loc.isWaterTile((int)tile.X, (int)tile.Y) || loc.isWaterTile((int)topTile.X, (int)topTile.Y)) return false;
+            if (loc.Objects.ContainsKey(tile) || loc.Objects.ContainsKey(topTile)) return false;
+            if (loc.IsTileOccupiedBy(tile) || loc.IsTileOccupiedBy(topTile)) return false; 
+            
+            if (loc.terrainFeatures.TryGetValue(tile, out var featureBase) || loc.terrainFeatures.TryGetValue(topTile, out var featureTop))
+            {
+                var feature = featureBase ?? featureTop;
+                if (feature is not StardewValley.TerrainFeatures.HoeDirt dirt || dirt.crop != null)
+                {
+                    return false;
+                }
+            }
+
+            var viewportRect = new xTile.Dimensions.Rectangle(Game1.viewport.X, Game1.viewport.Y, Game1.viewport.Width, Game1.viewport.Height);
+            if (!loc.isTilePassable(new xTile.Dimensions.Location((int)tile.X, (int)tile.Y), viewportRect) ||
+                !loc.isTilePassable(new xTile.Dimensions.Location((int)topTile.X, (int)topTile.Y), viewportRect)) 
+                return false;
+
+            return true;
+        }
+
+        public static bool IsTileValidForWarp(GameLocation loc, Vector2 tile)
+        {
+            if (loc == null) return false;
+            if (tile.X < 0 || tile.Y < 0 || tile.X >= loc.Map.Layers[0].LayerWidth || tile.Y >= loc.Map.Layers[0].LayerHeight) return false;
+
+            if (loc.isWaterTile((int)tile.X, (int)tile.Y)) return false;
+            if (loc.Objects.ContainsKey(tile)) return false;
+            if (loc.IsTileOccupiedBy(tile)) return false;
+            
+            if (loc.terrainFeatures.TryGetValue(tile, out var feature) && feature is not StardewValley.TerrainFeatures.HoeDirt)
+                return false;
+
+            var viewportRect = new xTile.Dimensions.Rectangle(Game1.viewport.X, Game1.viewport.Y, Game1.viewport.Width, Game1.viewport.Height);
+            if (!loc.isTilePassable(new xTile.Dimensions.Location((int)tile.X, (int)tile.Y), viewportRect)) 
+                return false;
+
+            return true;
         }
 
         private void OnGameLaunched(object sender, GameLaunchedEventArgs e)
@@ -252,10 +302,7 @@ namespace ObeliscoConectado
 
             foreach (var pos in candidates)
             {
-                // CORREÇÃO AQUI: A 1.6 exige um Rectangle (viewport), não o Farmer
-                if (loc.isTilePassable(new xTile.Dimensions.Location((int)pos.X, (int)pos.Y), Game1.viewport) 
-                    && !loc.Objects.ContainsKey(pos) 
-                    && !loc.isWaterTile((int)pos.X, (int)pos.Y))
+                if (IsTileValidForWarp(loc, pos)) 
                 {
                     return pos;
                 }
@@ -275,7 +322,10 @@ namespace ObeliscoConectado
             if (!__result && item?.QualifiedItemId == "(BC)238")
             {
                 Vector2 tile = new Vector2(x / 64, y / 64);
-                if (!location.Objects.ContainsKey(tile) && !location.isWaterTile((int)tile.X, (int)tile.Y)) __result = true;
+                if (ModEntry.IsTileValidForObelisk(location, tile))
+                {
+                    __result = true;
+                }
             }
         }
     }
@@ -288,19 +338,31 @@ namespace ObeliscoConectado
             if (__instance.QualifiedItemId == "(BC)238")
             {
                 Vector2 tile = new Vector2(x / 64, y / 64);
-                if (location.Objects.ContainsKey(tile)) { __result = false; return false; }
+                
+                if (!ModEntry.IsTileValidForObelisk(location, tile)) 
+                { 
+                    __result = false; 
+                    return false; 
+                }
+
                 int count = 0;
                 foreach (var loc in Game1.locations) count += loc.Objects.Pairs.Count(p => p.Value.QualifiedItemId == "(BC)238");
+                
                 if (count >= 2)
                 {
                     var newObelisk = (StardewValley.Object)__instance.getOne();
-                    newObelisk.TileLocation = tile; newObelisk.Location = location;
+                    newObelisk.TileLocation = tile; 
+                    newObelisk.Location = location;
                     location.setObject(tile, newObelisk);
+                    
                     if (who != null && who.ActiveItem != null && who.ActiveItem.Stack > 0) who.reduceActiveItemByOne();
                     else if (Game1.player.ActiveItem != null && Game1.player.ActiveItem.Stack > 0) Game1.player.reduceActiveItemByOne();
-                    location.playSound("axe"); location.playSound("stoneStep");
+                    
+                    location.playSound("axe"); 
+                    location.playSound("stoneStep");
                     ModEntry.Instance.RegisterNew($"{location.NameOrUniqueName}|{(int)tile.X}|{(int)tile.Y}");
-                    __result = true; return false;
+                    __result = true; 
+                    return false;
                 }
             }
             return true;

@@ -66,7 +66,6 @@ namespace ObeliscoConectado
             if (loc.Objects.ContainsKey(tile) || loc.Objects.ContainsKey(topTile)) return false;
             if (loc.IsTileOccupiedBy(tile) || loc.IsTileOccupiedBy(topTile)) return false; 
             
-            // CORREÇÃO DO ERRO CS0165 AQUI
             loc.terrainFeatures.TryGetValue(tile, out var featureBase);
             loc.terrainFeatures.TryGetValue(topTile, out var featureTop);
 
@@ -334,6 +333,7 @@ namespace ObeliscoConectado
         }
     }
 
+    // --- CORREÇÃO AQUI: Sempre faz a colocação manual, sem a trava da fazenda do vanilla ---
     [HarmonyPatch(typeof(StardewValley.Object), nameof(StardewValley.Object.placementAction))]
     public static class MiniObeliskLimitPatch
     {
@@ -349,25 +349,21 @@ namespace ObeliscoConectado
                     return false; 
                 }
 
-                int count = 0;
-                foreach (var loc in Game1.locations) count += loc.Objects.Pairs.Count(p => p.Value.QualifiedItemId == "(BC)238");
+                // Coloca o obelisco independentemente de estar na fazenda ou não
+                var newObelisk = (StardewValley.Object)__instance.getOne();
+                newObelisk.TileLocation = tile; 
+                newObelisk.Location = location;
+                location.setObject(tile, newObelisk);
                 
-                if (count >= 2)
-                {
-                    var newObelisk = (StardewValley.Object)__instance.getOne();
-                    newObelisk.TileLocation = tile; 
-                    newObelisk.Location = location;
-                    location.setObject(tile, newObelisk);
-                    
-                    if (who != null && who.ActiveItem != null && who.ActiveItem.Stack > 0) who.reduceActiveItemByOne();
-                    else if (Game1.player.ActiveItem != null && Game1.player.ActiveItem.Stack > 0) Game1.player.reduceActiveItemByOne();
-                    
-                    location.playSound("axe"); 
-                    location.playSound("stoneStep");
-                    ModEntry.Instance.RegisterNew($"{location.NameOrUniqueName}|{(int)tile.X}|{(int)tile.Y}");
-                    __result = true; 
-                    return false;
-                }
+                if (who != null && who.ActiveItem != null && who.ActiveItem.Stack > 0) who.reduceActiveItemByOne();
+                else if (Game1.player.ActiveItem != null && Game1.player.ActiveItem.Stack > 0) Game1.player.reduceActiveItemByOne();
+                
+                location.playSound("axe"); 
+                location.playSound("stoneStep");
+                ModEntry.Instance.RegisterNew($"{location.NameOrUniqueName}|{(int)tile.X}|{(int)tile.Y}");
+                
+                __result = true; 
+                return false; // Impede o jogo de rodar a validação vanilla
             }
             return true;
         }
